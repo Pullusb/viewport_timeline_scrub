@@ -2,9 +2,11 @@
 
 Scrub timeline in viewport and snap to nearest keyframe
 
-<!-- /!\ Alpha, work in progress -->
 
-**[Download latest](https://github.com/Pullusb/REPO_NAME/archive/master.zip)**
+/!\ Work in progress, under active development.
+This is a standalone feature for later integration in Grease Pencil Tools
+
+**[Download latest](https://github.com/Pullusb/viewport_timeline_scrub/archive/master.zip)**
 
 <!-- ### [Demo Youtube]() -->
 
@@ -21,7 +23,7 @@ Use addon preference
 
 Use designated shortcut in viewport to call temporary timeline
 
-while scrubbing use Ctrl key to snap to nearest keyframe
+While scrubbing use Ctrl key or Left click to snap to nearest keyframe
 
 ---
 
