@@ -27,6 +27,13 @@ while scrubbing use Ctrl key to snap to nearest keyframe
 
 ## Changelog:
 
-0.1.0:
+
+0.4.0:
+
+- Base text overlay dpi according to user settings
+
+- Snap mode on left click + continuous press
+
+0.3.0:
 
 - initial commit

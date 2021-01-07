@@ -7,10 +7,10 @@ import blf
 from gpu_extras.batch import batch_for_shader
 
 bl_info = {
-    "name": "Scrub Timeline",
+    "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 3, 0),
+    "version": (0, 4, 0),
     "blender": (2, 91, 0),
     "location": "View3D",
     "warning": "",
@@ -123,7 +123,7 @@ def draw_callback_px(self, context):
         # - # Display current frame
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+10, 0)
         # Id, Point size of the font, dots per inch value to use for drawing.
-        blf.size(font_id, 30, 72)
+        blf.size(font_id, 30, self.dpi) # 72
         # blf.color(font_id, 0.9, 0.3, 0.3, 0.6)
         blf.color(font_id, *self.color_text)
         blf.draw(font_id, f'{self.new_frame}')
@@ -132,7 +132,7 @@ def draw_callback_px(self, context):
     # - # Display frame offset
     if self.use_hud_frame_offset:
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+40, 0)
-        blf.size(font_id, 16, 72)
+        blf.size(font_id, 16, self.dpi) # 72
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
         blf.draw(font_id, f'{sign}{self.offset}')
@@ -163,6 +163,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             return {'CANCELLED'}
 
         self.key = prefs.keycode
+
+        self.dpi = context.preferences.system.dpi
         ## hud prefs
         self.color_timeline = prefs.color_timeline
         self.color_cursor = prefs.color_cursor
@@ -175,6 +177,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.px_step = prefs.pixel_step
         # global keycode
         # self.key = keycode
+        self.snap_on = False
         self.mouse = (event.mouse_region_x, event.mouse_region_y)
         self.init_mouse_x = self.cursor_x = event.mouse_region_x  # event.mouse_x
         self.init_frame = context.scene.frame_current
@@ -283,6 +286,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             context.area.tag_redraw()
         # print(f'Stopped {time()}')
 
+    # snap_on : bpy.props.BoolProperty(default=False)
+
     def modal(self, context, event):
         # -# /TESTER - keycode printer (flood console but usefull to know a keycode name)
         # , 'LEFTMOUSE'# avoid flood of mouse move.
@@ -291,6 +296,17 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         #     if event.value == 'PRESS':
         #         self.report({'INFO'}, event.type)
         # -#  TESTER/
+       
+        ## snap if using right mouse
+        if event.type == 'RIGHTMOUSE':
+            if event.value == "PRESS":
+                self.snap_on = True
+            else:
+                self.snap_on = False
+
+            # self.new_frame = nearest(self.pos, self.new_frame)
+            # self.offset = self.new_frame - self.init_frame
+            # context.scene.frame_current = self.new_frame
 
         if event.type == 'MOUSEMOVE':
             # - calculate frame offset from pixel offset
@@ -301,7 +317,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.offset = int(px_offset / self.px_step)
             self.new_frame = self.init_frame + self.offset
 
-            if event.ctrl:
+            if event.ctrl or self.snap_on:
                 # snap mode
                 self.new_frame = nearest(self.pos, self.new_frame)
 
@@ -316,11 +332,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             # calculate cursor pixel position from frame offset
             self.cursor_x = self.init_mouse_x + (self.offset * self.px_step)
 
-        ## snap if using right mouse
-        if event.type == 'RIGHTMOUSE':
-            self.new_frame = nearest(self.pos, self.new_frame)
-            self.offset = self.new_frame - self.init_frame
-            context.scene.frame_current = self.new_frame
 
         # if event.type in {'RIGHTMOUSE', 'ESC'}:
         if event.type == 'ESC':
@@ -334,9 +345,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             return {'FINISHED'}
 
         if event.type == 'LEFTMOUSE':
-            print('leftmouse')
+            # print('leftmouse')
             if event.value == "RELEASE":
-                print('touch release')
+                # print('touch release')
                 # - clic release...
                 self._exit_modal(context)
                 # - ? check left or right select ? (tablet is always left when draw anyway)
@@ -415,7 +426,7 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         name="Timeline Color",
         subtype='COLOR',
         size=4,
-        default=(0.5, 0.5, 0.5, 0.5),
+        default=(0.5, 0.5, 0.5, 0.6),
         min=0.0, max=1.0,
         description="Color of the temporary timeline"
     )
@@ -424,7 +435,7 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         name="Cusor Color",
         subtype='COLOR',
         size=4,
-        default=(0.9, 0.3, 0.3, 0.6),
+        default=(0.9, 0.3, 0.3, 0.8),
         min=0.0, max=1.0,
         description="Color of the temporary line cursor and text"
     )
