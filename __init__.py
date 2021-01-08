@@ -10,7 +10,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 4, 0),
+    "version": (0, 4, 1),
     "blender": (2, 91, 0),
     "location": "View3D",
     "warning": "",
@@ -21,7 +21,7 @@ bl_info = {
 - question
 Most important:
 for the shortcut:
-    use a "on press" key (without pressing key, currently used)
+    use a "on press" key without pressing mouse, (currently used)
     use shortcut + mouse press ? (complex do right clic + left clic press with a tablet pen...)
 
 Currently use only GP keys:
@@ -29,7 +29,7 @@ Currently use only GP keys:
 
 Other:
 Should it disable onion skin like normal scrubbing does
-Should it pause playback lauched during play ?
+Should it pause playback launched during play (and keep stop after) ?
 Snap on key by default ?
 
 - drawbacks
@@ -41,13 +41,12 @@ add an undo step containing timeline move. If not, a ctrl+Z after a new stroke m
 - Check possible defaut shortcut with GP team, Lison, Mathieu
 
 HUD
-- OK Use an horizontal ruler display for frame move (stuck on bottom or top)
 - OK vertical thin line for current position
 - OK snap to showed keyframe
 - OK show text
-- OK prefs to customize appeareance
+- OK prefs to customize color appeareance
 - OK add frame offset value as text
-- OK prefs conditions for activate only parts of HUD
+- OK prefs conditions to activate only parts of HUD
 - add source frame as text ? (draw depending on timeline HUD placement)
 - display marks for start and end ?
 - display marks for keyframes ?
@@ -312,7 +311,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             # - calculate frame offset from pixel offset
             # - get mouse.x and add it to initial frame num
             self.mouse = (event.mouse_region_x, event.mouse_region_y)
-            px_offset = (event.mouse_x - self.init_mouse_x)
+            # self.mouse = (event.mouse_x, event.mouse_y)
+
+            px_offset = (event.mouse_region_x - self.init_mouse_x)
             # int to overtake frame before change, use round to snap to closest (not blender style)
             self.offset = int(px_offset / self.px_step)
             self.new_frame = self.init_frame + self.offset

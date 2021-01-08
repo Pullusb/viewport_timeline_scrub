@@ -29,6 +29,9 @@ While scrubbing use Ctrl key or Left click to snap to nearest keyframe
 
 ## Changelog:
 
+0.4.1:
+
+- fix: corrected an offset bug in time when viewport used was not leftmost in screen
 
 0.4.0:
 
