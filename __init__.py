@@ -10,7 +10,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 4, 2),
+    "version": (0, 4, 3),
     "blender": (2, 91, 0),
     "location": "View3D",
     "warning": "",
@@ -53,46 +53,65 @@ def draw_callback_px(self, context):
     shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
     bgl.glEnable(bgl.GL_BLEND)
     bgl.glLineWidth(1)
-    # bgl.glLineWidth(2)
 
     # - # Draw HUD
     if self.use_hud_time_line:
         for line in self.hud_lines:
             batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": line})
             shader.bind()
-            shader.uniform_float("color", self.color_timeline)  # grey-light
+            shader.uniform_float("color", self.color_timeline)
             batch.draw(shader)
 
-    # Show current frame line
+    # - # Display keyframes
+    bgl.glLineWidth(3)
+    for k in self.key_lines:
+        batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": k})
+        shader.bind()
+        shader.uniform_float("color", self.color_timeline)
+        # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
+        # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
+        # shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
+        # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe' 
+        batch.draw(shader)
+
+    # - # Display keyframe as diamonds
+    # for k in self.key_diamonds:
+    #     batch = batch_for_shader(shader, 'TRIS', {"pos": k}, indices=self.indices)
+    #     shader.bind()
+    #     # shader.uniform_float("color", self.color_timeline)
+    #     # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
+    #     shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
+    #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe' 
+    #     batch.draw(shader)
+
+    # - # Show current frame line
     if self.use_hud_time_cursor:
+        bgl.glLineWidth(1)
         current = [(self.cursor_x, 0), (self.cursor_x, context.area.height)]
         batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": current})
-        # batch = batch_for_shader(shader, 'LINES', {"pos": self.hud_lines})
         shader.bind()
-        shader.uniform_float("color", self.color_cursor)  # light red
+        shader.uniform_float("color", self.color_cursor)
         batch.draw(shader)
 
     # restore opengl defaults
+    bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
 
     # text
     font_id = 0
 
-    # TODO change dot per inch according to user prefs
+    # - # Display current frame text
+    blf.color(font_id, *self.color_text)
     if self.use_hud_frame_current:
-        # - # Display current frame
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+10, 0)
         # Id, Point size of the font, dots per inch value to use for drawing.
-        blf.size(font_id, 30, self.dpi) # 72
-        # blf.color(font_id, 0.9, 0.3, 0.3, 0.6)
-        blf.color(font_id, *self.color_text)
+        blf.size(font_id, 30, self.dpi)  # 72
         blf.draw(font_id, f'{self.new_frame}')
 
-
-    # - # Display frame offset
+    # - # Display frame offset text
     if self.use_hud_frame_offset:
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+40, 0)
-        blf.size(font_id, 16, self.dpi) # 72
+        blf.size(font_id, 16, self.dpi)
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
         blf.draw(font_id, f'{sign}{self.offset}')
@@ -124,9 +143,10 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         self.current_area = context.area
         self.key = prefs.keycode
+        self.evaluate_gp_obj_key = prefs.evaluate_gp_obj_key
 
         self.dpi = context.preferences.system.dpi
-        ## hud prefs
+        # hud prefs
         self.color_timeline = prefs.color_timeline
         self.color_cursor = prefs.color_cursor
         self.color_text = prefs.color_cursor
@@ -147,30 +167,27 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         ob = context.object
 
-        # if context.space_data.type == 'DOPESHEET'
+        if ob.type != 'GPENCIL' or self.evaluate_gp_obj_key:
+            # Get objet keyframe position
+            anim_data = ob.animation_data
+            action = None
 
-        # action_name = (ob.animation_data.action.name if ob.animation_data is not None and ob.animation_data.action is not None else "")
-
-        # if len(action_name):
-        #     actions = bpy.data.actions[action_name]
-
-        #     # Iterate through action curve
-        #     for fcu in actions.fcurves:
-        #         for keyframe in fcu.keyframe_points:
-        #             if keyframe.co.x not in self.pos:
-        #                 self.pos.append(keyframe.co.x)
+            if anim_data:
+                action = anim_data.action
+            if action:
+                for fcu in action.fcurves:
+                    for kf in fcu.keyframe_points:
+                        if kf.co.x not in self.pos:
+                            self.pos.append(kf.co.x)
 
         if ob.type == 'GPENCIL':
-            # elif type(ob.data) is bpy.types.GreasePencil:
+            # Get GP frame position
             gpl = ob.data.layers
             layer = gpl.active
-            if layer is None:
-                self.report({'ERROR'}, "No active layer in current object")
-                return {'CANCELLED'}
-
-            for frame in layer.frames:
-                if frame.frame_number not in self.pos:
-                    self.pos.append(frame.frame_number)
+            if layer:
+                for frame in layer.frames:
+                    if frame.frame_number not in self.pos:
+                        self.pos.append(frame.frame_number)
 
         # - Add start and end to snap on ?
         if context.scene.use_preview_range:
@@ -205,6 +222,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         init_height = 60
         frame_height = 30
+        key_height = 14
 
         height = context.area.height
         if prefs.hud_position == 'BOTTOM':
@@ -225,19 +243,40 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
                                (x, my + (frame_height/2))) for x in hud_pos_x]
             self.hud_lines += [((self.init_mouse_x, my - (init_height/2)),
                                 (self.init_mouse_x, my + (init_height/2)))]
-            # -# H line
+            # - # H line
             # leftmost = self.init_mouse_x - (left*self.px_step)
             # rightmost = self.init_mouse_x + (right*self.px_step)
             # self.hud_lines += [((leftmost, my), (rightmost, my))]
             self.hud_lines += [((0, my), (width, my))]
 
+            # - # keyframe display
+            ## line version
+            self.key_lines = [(
+                (self.init_mouse_x + ((i-self.init_frame)*self.px_step), my - (key_height/2)),
+                ((self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
+                ) for i in self.pos]
 
-        # Disable Onion skin 
-        self.onion_skin = context.space_data.overlay.use_gpencil_onion_skin
-        context.space_data.overlay.use_gpencil_onion_skin = False
-        
+            ## diamond version
+            # keysize = 6 # 5 fpr square, 4 or 6 for diamond
+            # upper = 0
+            # self.key_diamonds = []
+            # for i in self.pos:
+            #     center = self.init_mouse_x + ((i-self.init_frame)*self.px_step)
+            #     self.key_diamonds.append((
+            #     (center-keysize, my+upper), (center, my+keysize+upper), # diamond
+            #     (center+keysize, my+upper), (center, my-keysize+upper) # diamond
+            #     # (center-keysize, my-keysize+upper), (center-keysize, my+keysize+upper), # square
+            #     # (center+keysize, my+keysize+upper), (center+keysize, my-keysize+upper) # square
+            #     ))
+            # self.indices = ((0, 1, 2), (0, 2, 3))
+
+        # Disable Onion skin
+        self.active_space_data = context.space_data
+        self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
+        self.active_space_data.overlay.use_gpencil_onion_skin = False
+
         args = (self, context)  # HUD
-        # TODO check if possible to draw timeline only once
+        # TODO check if possible to draw timeline only once from modal
 
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             draw_callback_px, args, 'WINDOW', 'POST_PIXEL')  # HUD
@@ -245,13 +284,10 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _exit_modal(self, context):
-        context.space_data.overlay.use_gpencil_onion_skin = self.onion_skin
+        self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
         if self.hud:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             context.area.tag_redraw()
-        # print(f'Stopped {time()}')
-
-    # snap_on : bpy.props.BoolProperty(default=False)
 
     def modal(self, context, event):
         # -# /TESTER - keycode printer (flood console but usefull to know a keycode name)
@@ -261,8 +297,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         #     if event.value == 'PRESS':
         #         self.report({'INFO'}, event.type)
         # -#  TESTER/
-       
-        ## snap if using right mouse
+
+        # snap if using right mouse
         if event.type == 'RIGHTMOUSE':
             if event.value == "PRESS":
                 self.snap_on = True
@@ -298,12 +334,13 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.offset = self.new_frame - self.init_frame
             # calculate cursor pixel position from frame offset
             self.cursor_x = self.init_mouse_x + (self.offset * self.px_step)
-
+            # self._compute_timeline(context, event)
 
         # if event.type in {'RIGHTMOUSE', 'ESC'}:
         if event.type == 'ESC':
             # context.scene.frame_set(self.init_frame)
             context.scene.frame_current = self.init_frame
+            self._exit_modal(context)
             return {'CANCELLED'}
 
         if event.type == self.key and event.value == "RELEASE":
@@ -311,22 +348,15 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self._exit_modal(context)
             return {'FINISHED'}
 
-        ## End modal on right clic release ? (relaunched immediately if other key not moved)
+        # End modal on right clic release ? (relaunched immediately if main key not released)
         # if event.type == 'LEFTMOUSE':
         #     if event.value == "RELEASE":
         #         self._exit_modal(context)
         #         return {'FINISHED'}
 
-        # return {'PASS_THROUGH'}
         return {"RUNNING_MODAL"}
 
-    # def draw(self, context):
-    #     layout = self.layout
-    #     layout.prop(self, "shift")
-
-
 # --- addon prefs
-
 
 class GPTS_addon_prefs(bpy.types.AddonPreferences):
     bl_idname = __name__
@@ -336,6 +366,11 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Shortcut to trigger the scrub in viewport during press",
         default="F5",
     )
+
+    evaluate_gp_obj_key: bpy.props.BoolProperty(
+        name='Use Gpencil object keyframes',
+        description="Also snap on greasepencil object keyframe (else only active layer frames)",
+        default=True)
 
     # options (set) – Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE', 'PROPORTIONAL','TEXTEDIT_UPDATE'].
     pixel_step: bpy.props.IntProperty(
@@ -358,17 +393,17 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         name='Timeline',
         description="Display a static marks to represent timeline overlay when scrubbing time in viewport",
         default=True)
-    
+
     use_hud_time_cursor: bpy.props.BoolProperty(
         name='Current Time',
         description="Display a vertical line to show position in time",
         default=True)
-    
+
     use_hud_frame_current: bpy.props.BoolProperty(
         name='Text Frame Current',
         description="Display the current frame as text above mouse cursor",
         default=True)
-    
+
     use_hud_frame_offset: bpy.props.BoolProperty(
         name='Text Frame Offset',
         description="Display frame offset from initial position as text above mouse cursor",
@@ -410,11 +445,12 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         # row = layout.row(align=True)
 
         layout.prop(self, 'keycode')
+        layout.prop(self, 'evaluate_gp_obj_key')
         # Make a keycode capture system or find a way to display keymap with full_event=True
         layout.prop(self, 'pixel_step')
-        
+
         layout.prop(self, 'use_hud')
-        
+
         col = layout.column()
         row = col.row()
         row.prop(self, 'color_timeline')

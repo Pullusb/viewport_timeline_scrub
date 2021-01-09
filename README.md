@@ -14,21 +14,25 @@ This is a standalone feature for later integration in Grease Pencil Tools
 
 ## Description
 
-Use addon preference 
+Pop-up a timeline in viewport so you can scrub full screen
 
-**tool action** : `SHORTCUT`
+![Viewport scrubbing in time](https://github.com/Pullusb/images_repo/raw/master/Bl_scrub_timeline_preview.gif)
 
+**Viewport timeline** : `F5` (temporary default shortcut)
 
-### Where ?
+Use addon preference to customize shortcut, Display colors and fetaures
 
-Use designated shortcut in viewport to call temporary timeline
+Use designated shortcut in viewport to call temporary timeline and scrub
 
-While scrubbing use Ctrl key or Left click to snap to nearest keyframe
+While scrubbing use `Ctrl` key or `RMB` (Right click) to snap to nearest keyframe
 
 ---
 
 ### TODO
+
 - Better way for user to chose keymap live in preferences
+
+- Improve drawing performance
 
 HUD
 - add source frame as text ? (draw depending on timeline HUD placement)
@@ -73,6 +77,14 @@ Done:
 
 
 ## Changelog:
+
+0.4.3:
+
+- feat: Display keyframes on timeline
+
+- fixing some problem with onion skin auto hide
+
+- better readme with demo gif
 
 0.4.2:
 
