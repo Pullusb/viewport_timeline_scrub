@@ -10,9 +10,9 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 4, 3),
+    "version": (0, 5, 0),
     "blender": (2, 91, 0),
-    "location": "View3D",
+    "location": "View3D > F5 key + Right clic to snap",
     "warning": "",
     "doc_url": "https://github.com/Pullusb/scrub_timeline",
     "category": "Object"}
@@ -106,7 +106,7 @@ def draw_callback_px(self, context):
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+10, 0)
         # Id, Point size of the font, dots per inch value to use for drawing.
         blf.size(font_id, 30, self.dpi)  # 72
-        blf.draw(font_id, f'{self.new_frame}')
+        blf.draw(font_id, f'{self.new_frame:.0f}')
 
     # - # Display frame offset text
     if self.use_hud_frame_offset:
@@ -114,7 +114,7 @@ def draw_callback_px(self, context):
         blf.size(font_id, 16, self.dpi)
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
-        blf.draw(font_id, f'{sign}{self.offset}')
+        blf.draw(font_id, f'{sign}{self.offset:.0f}')
 
     # Draw text debug infos at bottom left
     # blf.position(font_id, 15, 30, 0)
@@ -130,7 +130,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.object and context.space_data.type == 'VIEW_3D'
+        return context.space_data.type == 'VIEW_3D'
 
     def invoke(self, context, event):
         prefs = get_addon_prefs()
@@ -166,28 +166,28 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.pos = []
 
         ob = context.object
+        if ob:# condition to allow empty scrubing
+            if ob.type != 'GPENCIL' or self.evaluate_gp_obj_key:
+                # Get objet keyframe position
+                anim_data = ob.animation_data
+                action = None
 
-        if ob.type != 'GPENCIL' or self.evaluate_gp_obj_key:
-            # Get objet keyframe position
-            anim_data = ob.animation_data
-            action = None
+                if anim_data:
+                    action = anim_data.action
+                if action:
+                    for fcu in action.fcurves:
+                        for kf in fcu.keyframe_points:
+                            if kf.co.x not in self.pos:
+                                self.pos.append(kf.co.x)
 
-            if anim_data:
-                action = anim_data.action
-            if action:
-                for fcu in action.fcurves:
-                    for kf in fcu.keyframe_points:
-                        if kf.co.x not in self.pos:
-                            self.pos.append(kf.co.x)
-
-        if ob.type == 'GPENCIL':
-            # Get GP frame position
-            gpl = ob.data.layers
-            layer = gpl.active
-            if layer:
-                for frame in layer.frames:
-                    if frame.frame_number not in self.pos:
-                        self.pos.append(frame.frame_number)
+            if ob.type == 'GPENCIL':
+                # Get GP frame position
+                gpl = ob.data.layers
+                layer = gpl.active
+                if layer:
+                    for frame in layer.frames:
+                        if frame.frame_number not in self.pos:
+                            self.pos.append(frame.frame_number)
 
         # - Add start and end to snap on ?
         if context.scene.use_preview_range:

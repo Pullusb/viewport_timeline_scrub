@@ -1,6 +1,6 @@
-# Scrub timeline (Viewport scrub)
+# Viewport scrub timeline
 
-Scrub timeline in viewport and snap to nearest keyframe
+Move in the timeline directly in viewport and snap to nearest keyframe
 
 
 /!\ Work in progress, under active development.
@@ -78,13 +78,19 @@ Done:
 
 ## Changelog:
 
-0.4.3:
+0.5.0:
 
 - feat: Display keyframes on timeline
 
-- fixing some problem with onion skin auto hide
+- feat: Consider objects key (non-GP object)
 
-- better readme with demo gif
+- new pref: Consider GP objet key for snapping/display (defaut=True)
+
+- fix: Allow "empty" scrubbing (when there is no active object)
+
+- fix: Problem with onion skin auto-hide whne using Esc to go back to init frame
+
+- doc: Better readme with demo gif
 
 0.4.2:
 
