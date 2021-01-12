@@ -10,10 +10,10 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 5, 0),
+    "version": (0, 6, 0),
     "blender": (2, 91, 0),
     "location": "View3D > F5 key + Right clic to snap",
-    "warning": "",
+    "warning": "Work in progress (stable)",
     "doc_url": "https://github.com/Pullusb/scrub_timeline",
     "category": "Object"}
 
@@ -25,23 +25,6 @@ def nearest(array, value):
     '''
     idx = (np.abs(array - value)).argmin()
     return array[idx]
-
-
-""" def draw_timeline(self, context):
-    # Draw HUD only once and disable when leaving
-    shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glLineWidth(1)
-
-    for line in self.hud_lines:
-        batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": line})
-        shader.bind()
-        shader.uniform_float("color", self.color_timeline)  # grey-light
-        batch.draw(shader)
-
-    # restore opengl defaults
-    bgl.glDisable(bgl.GL_BLEND) """
-
 
 def draw_callback_px(self, context):
     '''Draw callback use by modal to draw in viewport'''
@@ -56,41 +39,37 @@ def draw_callback_px(self, context):
 
     # - # Draw HUD
     if self.use_hud_time_line:
-        for line in self.hud_lines:
-            batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": line})
-            shader.bind()
-            shader.uniform_float("color", self.color_timeline)
-            batch.draw(shader)
+        shader.bind()
+        shader.uniform_float("color", self.color_timeline)
+        self.batch_timeline.draw(shader)
 
     # - # Display keyframes
     bgl.glLineWidth(3)
-    for k in self.key_lines:
-        batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": k})
-        shader.bind()
-        shader.uniform_float("color", self.color_timeline)
-        # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
-        # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
-        # shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
-        # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe' 
-        batch.draw(shader)
+    shader.bind()
+    shader.uniform_float("color", self.color_timeline)
+    self.batch_keyframes.draw(shader)
 
     # - # Display keyframe as diamonds
     # for k in self.key_diamonds:
     #     batch = batch_for_shader(shader, 'TRIS', {"pos": k}, indices=self.indices)
     #     shader.bind()
+    #     # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
     #     # shader.uniform_float("color", self.color_timeline)
     #     # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
     #     shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
-    #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe' 
+    #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
     #     batch.draw(shader)
 
     # - # Show current frame line
-    if self.use_hud_time_cursor:
+    if self.use_hud_playhead:
         bgl.glLineWidth(1)
-        current = [(self.cursor_x, 0), (self.cursor_x, context.area.height)]
-        batch = batch_for_shader(shader, 'LINE_STRIP', {"pos": current})
+        #-# old full height playhead
+        # playhead = [(self.cursor_x, 0), (self.cursor_x, context.area.height)]
+        playhead = [(self.cursor_x, self.my + self.playhead_size/2),
+                   (self.cursor_x, self.my - self.playhead_size/2)]
+        batch = batch_for_shader(shader, 'LINES', {"pos": playhead})
         shader.bind()
-        shader.uniform_float("color", self.color_cursor)
+        shader.uniform_float("color", self.color_playhead)
         batch.draw(shader)
 
     # restore opengl defaults
@@ -110,7 +89,7 @@ def draw_callback_px(self, context):
 
     # - # Display frame offset text
     if self.use_hud_frame_offset:
-        blf.position(font_id, self.mouse[0]+10, self.mouse[1]+40, 0)
+        blf.position(font_id, self.mouse[0]+10, self.mouse[1]+(40*self.ui_scale), 0)
         blf.size(font_id, 16, self.dpi)
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
@@ -146,14 +125,18 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.evaluate_gp_obj_key = prefs.evaluate_gp_obj_key
 
         self.dpi = context.preferences.system.dpi
+        self.ui_scale = context.preferences.system.ui_scale
         # hud prefs
         self.color_timeline = prefs.color_timeline
-        self.color_cursor = prefs.color_cursor
-        self.color_text = prefs.color_cursor
+        self.color_playhead = prefs.color_playhead
+        self.color_text = prefs.color_playhead
         self.use_hud_time_line = prefs.use_hud_time_line
-        self.use_hud_time_cursor = prefs.use_hud_time_cursor
+        self.use_hud_playhead = prefs.use_hud_playhead
         self.use_hud_frame_current = prefs.use_hud_frame_current
         self.use_hud_frame_offset = prefs.use_hud_frame_offset
+
+        self.playhead_size = prefs.playhead_size
+        self.lines_size = prefs.lines_size
 
         self.px_step = prefs.pixel_step
         # global keycode
@@ -166,7 +149,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.pos = []
 
         ob = context.object
-        if ob:# condition to allow empty scrubing
+        if ob:  # condition to allow empty scrubing
             if ob.type != 'GPENCIL' or self.evaluate_gp_obj_key:
                 # Get objet keyframe position
                 anim_data = ob.animation_data
@@ -221,62 +204,64 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # TODO how to trace the grid only once
 
         init_height = 60
-        frame_height = 30
+        frame_height = self.lines_size
         key_height = 14
 
-        height = context.area.height
-        if prefs.hud_position == 'BOTTOM':
-            self.hud_lines = [((x, 0), (x, frame_height)) for x in hud_pos_x]
-            self.hud_lines += [((self.init_mouse_x, 0),
-                                (self.init_mouse_x, init_height))]
+        self.my = my = event.mouse_region_y  # event.mouse_y
 
-        elif prefs.hud_position == 'TOP':
-            self.hud_lines = [((x, height), (x, height - frame_height - 30))
-                              for x in hud_pos_x]
-            self.hud_lines += [((self.init_mouse_x, height),
-                                (self.init_mouse_x, height - init_height - 30))]
+        self.hud_lines = []
+        # - # frame marks
+        for x in hud_pos_x:
+            self.hud_lines.append((x, my - (frame_height/2)))
+            self.hud_lines.append((x, my + (frame_height/2)))
 
-        else:  # MOUSE
-            # - At mouse pos
-            my = event.mouse_region_y  # event.mouse_y
-            self.hud_lines = [((x, my - (frame_height/2)),
-                               (x, my + (frame_height/2))) for x in hud_pos_x]
-            self.hud_lines += [((self.init_mouse_x, my - (init_height/2)),
-                                (self.init_mouse_x, my + (init_height/2)))]
-            # - # H line
-            # leftmost = self.init_mouse_x - (left*self.px_step)
-            # rightmost = self.init_mouse_x + (right*self.px_step)
-            # self.hud_lines += [((leftmost, my), (rightmost, my))]
-            self.hud_lines += [((0, my), (width, my))]
+        # - # init frame mark
+        self.hud_lines += [(self.init_mouse_x, my - (init_height/2)),
+                           (self.init_mouse_x, my + (init_height/2))]
 
-            # - # keyframe display
-            ## line version
-            self.key_lines = [(
-                (self.init_mouse_x + ((i-self.init_frame)*self.px_step), my - (key_height/2)),
-                ((self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
-                ) for i in self.pos]
+        # - # Horizontal line
+        self.hud_lines += [(0, my), (width, my)]
 
-            ## diamond version
-            # keysize = 6 # 5 fpr square, 4 or 6 for diamond
-            # upper = 0
-            # self.key_diamonds = []
-            # for i in self.pos:
-            #     center = self.init_mouse_x + ((i-self.init_frame)*self.px_step)
-            #     self.key_diamonds.append((
-            #     (center-keysize, my+upper), (center, my+keysize+upper), # diamond
-            #     (center+keysize, my+upper), (center, my-keysize+upper) # diamond
-            #     # (center-keysize, my-keysize+upper), (center-keysize, my+keysize+upper), # square
-            #     # (center+keysize, my+keysize+upper), (center+keysize, my-keysize+upper) # square
-            #     ))
-            # self.indices = ((0, 1, 2), (0, 2, 3))
+        # - #other method with cutted H line
+        # leftmost = self.init_mouse_x - (left*self.px_step)
+        # rightmost = self.init_mouse_x + (right*self.px_step)
+        # self.hud_lines += [(leftmost, my), (rightmost, my)]
+
+        # - # keyframe display
+        self.key_lines = []
+        for i in self.pos:
+            self.key_lines.append((self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
+            self.key_lines.append((self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
+
+
+        # diamond version
+        # keysize = 6 # 5 fpr square, 4 or 6 for diamond
+        # upper = 0
+        # self.key_diamonds = []
+        # for i in self.pos:
+        #     center = self.init_mouse_x + ((i-self.init_frame)*self.px_step)
+        #     self.key_diamonds.append((
+        #     (center-keysize, my+upper), (center, my+keysize+upper), # diamond
+        #     (center+keysize, my+upper), (center, my-keysize+upper) # diamond
+        #     # (center-keysize, my-keysize+upper), (center-keysize, my+keysize+upper), # square
+        #     # (center+keysize, my+keysize+upper), (center+keysize, my-keysize+upper) # square
+        #     ))
+        # self.indices = ((0, 1, 2), (0, 2, 3))
 
         # Disable Onion skin
         self.active_space_data = context.space_data
         self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
         self.active_space_data.overlay.use_gpencil_onion_skin = False
 
+        # - # Prepare batchs to draw static parts
+
+        shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
+        self.batch_timeline = batch_for_shader(
+            shader, 'LINES', {"pos": self.hud_lines})
+
+        self.batch_keyframes = batch_for_shader(
+            shader, 'LINES', {"pos": self.key_lines})
         args = (self, context)  # HUD
-        # TODO check if possible to draw timeline only once from modal
 
         self._handle = bpy.types.SpaceView3D.draw_handler_add(
             draw_callback_px, args, 'WINDOW', 'POST_PIXEL')  # HUD
@@ -358,6 +343,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
 # --- addon prefs
 
+
 class GPTS_addon_prefs(bpy.types.AddonPreferences):
     bl_idname = __name__
 
@@ -394,9 +380,9 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Display a static marks to represent timeline overlay when scrubbing time in viewport",
         default=True)
 
-    use_hud_time_cursor: bpy.props.BoolProperty(
-        name='Current Time',
-        description="Display a vertical line to show position in time",
+    use_hud_playhead: bpy.props.BoolProperty(
+        name='Playhead',
+        description="Display the playhead as a vertical line to show position in time",
         default=True)
 
     use_hud_frame_current: bpy.props.BoolProperty(
@@ -409,18 +395,6 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Display frame offset from initial position as text above mouse cursor",
         default=True)
 
-    hud_position: bpy.props.EnumProperty(
-        items=(('MOUSE', "Mouse Cursor",
-                "Display timeline at mouse position", 'MOUSE_MOVE', 0),
-               ('TOP', "Viewport Top",
-                "Display timeline at the top of the viewport", 'TRIA_UP_BAR', 1),
-               ('BOTTOM', "Viewport Bottom",
-                "Display timeline at the bottom of the viewport", 'TRIA_DOWN_BAR', 2),
-               ),
-        name='Timeline Display Position',
-        default='MOUSE',
-        description='Choose HUD position to display temporary timeline intervals')
-
     color_timeline: bpy.props.FloatVectorProperty(
         name="Timeline Color",
         subtype='COLOR',
@@ -430,14 +404,37 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Color of the temporary timeline"
     )
 
-    color_cursor: bpy.props.FloatVectorProperty(
+    color_playhead: bpy.props.FloatVectorProperty(
         name="Cusor Color",
         subtype='COLOR',
         size=4,
-        default=(0.9, 0.3, 0.3, 0.8),
+        default= (0.01, 0.64, 1.0, 0.8), # red (0.9, 0.3, 0.3, 0.8)
         min=0.0, max=1.0,
         description="Color of the temporary line cursor and text"
     )
+    
+    # - # sizes
+    playhead_size: bpy.props.IntProperty(
+        name="Playhead Size",
+        description="Playhead height in pixels",
+        default=100,
+        min=2,
+        max=10000,
+        soft_min=10,
+        soft_max=5000,
+        step=1,
+        subtype='PIXEL')
+
+    lines_size: bpy.props.IntProperty(
+        name="Frame Lines Size",
+        description="Frame lines height in pixels",
+        default=10,
+        min=1,
+        max=10000,
+        soft_min=5,
+        soft_max=40,
+        step=1,
+        subtype='PIXEL')
 
     def draw(self, context):
         layout = self.layout
@@ -454,15 +451,17 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         col = layout.column()
         row = col.row()
         row.prop(self, 'color_timeline')
-        row.prop(self, 'color_cursor', text='Cursor And Text Color')
+        row.prop(self, 'color_playhead', text='Cursor And Text Color')
         col.label(text='Show:')
         row = col.row()
         row.prop(self, 'use_hud_time_line')
-        row.prop(self, 'use_hud_time_cursor')
+        row.prop(self, 'use_hud_playhead')
         row = col.row()
         row.prop(self, 'use_hud_frame_current')
         row.prop(self, 'use_hud_frame_offset')
-        col.prop(self, 'hud_position', text='Display Timeline At')
+        row = col.row()
+        row.prop(self, 'playhead_size')
+        row.prop(self, 'lines_size')
         col.enabled = self.use_hud
 
 
