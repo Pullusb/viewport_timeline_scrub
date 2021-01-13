@@ -36,10 +36,6 @@ While scrubbing use `Ctrl` key or `RMB` (Right click) to snap to nearest keyfram
 
 - HUD: add source frame as text ?
 
-### Ideas
-
-- Consider enabling in other editors (VSE/motion tracker)
-
 <!-- - question
 Most important:
 for the shortcut:
@@ -78,6 +74,12 @@ Done:
 
 
 ## Changelog:
+
+0.6.1:
+
+- feat: Mouse + modifier shortcut (enabled by default)
+  - Automatically change Snap key to unused modifiers and click
+- Added support for scrub in VSE and Movie clip editor (but openGL doesn't draw overlay)
 
 0.6.0:
 

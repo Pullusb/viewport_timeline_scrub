@@ -6,13 +6,21 @@ import bgl
 import blf
 from gpu_extras.batch import batch_for_shader
 
+from bpy.props import (BoolProperty,
+                       StringProperty,
+                       IntProperty,
+                       FloatVectorProperty,
+                       IntProperty,
+                       PointerProperty,
+                       EnumProperty)
+
 bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 6, 0),
+    "version": (0, 6, 1),
     "blender": (2, 91, 0),
-    "location": "View3D > F5 key + Right clic to snap",
+    "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "Work in progress (stable)",
     "doc_url": "https://github.com/Pullusb/scrub_timeline",
     "category": "Object"}
@@ -25,6 +33,7 @@ def nearest(array, value):
     '''
     idx = (np.abs(array - value)).argmin()
     return array[idx]
+
 
 def draw_callback_px(self, context):
     '''Draw callback use by modal to draw in viewport'''
@@ -63,10 +72,10 @@ def draw_callback_px(self, context):
     # - # Show current frame line
     if self.use_hud_playhead:
         bgl.glLineWidth(1)
-        #-# old full height playhead
+        # -# old full height playhead
         # playhead = [(self.cursor_x, 0), (self.cursor_x, context.area.height)]
         playhead = [(self.cursor_x, self.my + self.playhead_size/2),
-                   (self.cursor_x, self.my - self.playhead_size/2)]
+                    (self.cursor_x, self.my - self.playhead_size/2)]
         batch = batch_for_shader(shader, 'LINES', {"pos": playhead})
         shader.bind()
         shader.uniform_float("color", self.color_playhead)
@@ -89,7 +98,8 @@ def draw_callback_px(self, context):
 
     # - # Display frame offset text
     if self.use_hud_frame_offset:
-        blf.position(font_id, self.mouse[0]+10, self.mouse[1]+(40*self.ui_scale), 0)
+        blf.position(font_id, self.mouse[0]+10,
+                     self.mouse[1]+(40*self.ui_scale), 0)
         blf.size(font_id, 16, self.dpi)
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
@@ -109,21 +119,21 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
     @classmethod
     def poll(cls, context):
-        return context.space_data.type == 'VIEW_3D'
+        return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
 
     def invoke(self, context, event):
         prefs = get_addon_prefs()
-        # if context.mode not in ('PAINT_GPENCIL', 'EDIT_GPENCIL'):
-        #     return {"CANCELLED"}
-
-        if context.space_data.type != 'VIEW_3D':
-            self.report({'WARNING'}, "Work only in Viewport")
-            return {'CANCELLED'}
+        # Gpencil contexts : ('PAINT_GPENCIL', 'EDIT_GPENCIL')
+        # if context.space_data.type != 'VIEW_3D':
+        #     self.report({'WARNING'}, "Work only in Viewport")
+        #     return {'CANCELLED'}
 
         self.current_area = context.area
         self.key = prefs.keycode
         self.evaluate_gp_obj_key = prefs.evaluate_gp_obj_key
 
+        self.ts_mouse_shortcut = prefs.ts_mouse_shortcut
+        self.ts_mouse_click = prefs.ts_mouse_click
         self.dpi = context.preferences.system.dpi
         self.ui_scale = context.preferences.system.ui_scale
         # hud prefs
@@ -148,7 +158,17 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.offset = 0
         self.pos = []
 
+        # Snap touch control
+        self.snap_ctrl = not prefs.ts_use_ctrl
+        self.snap_shift = not prefs.ts_use_shift
+        self.snap_alt = not prefs.ts_use_alt
+        self.snap_mouse_key = 'LEFTMOUSE' if self.ts_mouse_click == 'RIGHTMOUSE' else 'RIGHTMOUSE'
+
         ob = context.object
+
+        if context.space_data.type != 'VIEW_3D':
+            ob = None  # do not consider any key
+
         if ob:  # condition to allow empty scrubing
             if ob.type != 'GPENCIL' or self.evaluate_gp_obj_key:
                 # Get objet keyframe position
@@ -230,9 +250,10 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # - # keyframe display
         self.key_lines = []
         for i in self.pos:
-            self.key_lines.append((self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
-            self.key_lines.append((self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
-
+            self.key_lines.append(
+                (self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
+            self.key_lines.append(
+                (self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
 
         # diamond version
         # keysize = 6 # 5 fpr square, 4 or 6 for diamond
@@ -250,8 +271,10 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         # Disable Onion skin
         self.active_space_data = context.space_data
-        self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
-        self.active_space_data.overlay.use_gpencil_onion_skin = False
+        self.onion_skin = None
+        if context.space_data.type == 'VIEW_3D':
+            self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
+            self.active_space_data.overlay.use_gpencil_onion_skin = False
 
         # - # Prepare batchs to draw static parts
 
@@ -269,7 +292,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         return {'RUNNING_MODAL'}
 
     def _exit_modal(self, context):
-        self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
+        if self.onion_skin is not None:
+            self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
         if self.hud:
             bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
             context.area.tag_redraw()
@@ -283,17 +307,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         #         self.report({'INFO'}, event.type)
         # -#  TESTER/
 
-        # snap if using right mouse
-        if event.type == 'RIGHTMOUSE':
-            if event.value == "PRESS":
-                self.snap_on = True
-            else:
-                self.snap_on = False
-
-            # self.new_frame = nearest(self.pos, self.new_frame)
-            # self.offset = self.new_frame - self.init_frame
-            # context.scene.frame_current = self.new_frame
-
         if event.type == 'MOUSEMOVE':
             # - calculate frame offset from pixel offset
             # - get mouse.x and add it to initial frame num
@@ -305,9 +318,22 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.offset = int(px_offset / self.px_step)
             self.new_frame = self.init_frame + self.offset
 
-            if event.ctrl or self.snap_on:
-                # snap mode
-                self.new_frame = nearest(self.pos, self.new_frame)
+            if self.ts_mouse_shortcut:
+                mod_snap = False
+                if self.snap_ctrl and event.ctrl:
+                    mod_snap = True
+                if self.snap_shift and event.shift:
+                    mod_snap = True
+                if self.snap_alt and event.alt:
+                    mod_snap = True
+
+                if self.snap_on or mod_snap:
+                    self.new_frame = nearest(self.pos, self.new_frame)
+
+            else:
+                if self.snap_on or event.ctrl:
+                    self.new_frame = nearest(self.pos, self.new_frame)
+                    # snap mode
 
             # context.scene.frame_set(self.new_frame)
             context.scene.frame_current = self.new_frame
@@ -321,45 +347,115 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.cursor_x = self.init_mouse_x + (self.offset * self.px_step)
             # self._compute_timeline(context, event)
 
-        # if event.type in {'RIGHTMOUSE', 'ESC'}:
         if event.type == 'ESC':
             # context.scene.frame_set(self.init_frame)
             context.scene.frame_current = self.init_frame
             self._exit_modal(context)
             return {'CANCELLED'}
 
-        if event.type == self.key and event.value == "RELEASE":
-            # - trigger key release
-            self._exit_modal(context)
-            return {'FINISHED'}
+        # - # Mouse
+        if self.ts_mouse_shortcut:
+            # Snap if pressing NOT used mouse key (right or mid)
+            if event.type == self.snap_mouse_key:
+                if event.value == "PRESS":
+                    self.snap_on = True
+                else:
+                    self.snap_on = False
 
-        # End modal on right clic release ? (relaunched immediately if main key not released)
-        # if event.type == 'LEFTMOUSE':
-        #     if event.value == "RELEASE":
-        #         self._exit_modal(context)
-        #         return {'FINISHED'}
+            if event.type == self.ts_mouse_click and event.value == 'RELEASE':
+                self._exit_modal(context)
+                return {'FINISHED'}
+
+        # - # Single press
+        else:
+            # snap if using right mouse
+            if event.type == 'RIGHTMOUSE':
+                if event.value == "PRESS":
+                    self.snap_on = True
+                else:
+                    self.snap_on = False
+
+                # self.new_frame = nearest(self.pos, self.new_frame)
+                # self.offset = self.new_frame - self.init_frame
+                # context.scene.frame_current = self.new_frame
+
+            # if event.type in {'RIGHTMOUSE', 'ESC'}:
+
+            if event.type == self.key and event.value == "RELEASE":
+                # - trigger key release
+                self._exit_modal(context)
+                return {'FINISHED'}
+
+            # End modal on right clic release ? (relaunched immediately if main key not released)
+            # if event.type == 'LEFTMOUSE':
+            #     if event.value == "RELEASE":
+            #         self._exit_modal(context)
+            #         return {'FINISHED'}
 
         return {"RUNNING_MODAL"}
 
 # --- addon prefs
 
 
+def auto_rebind(self, context):
+    unregister_keymaps()
+    register_keymaps()
+
+
 class GPTS_addon_prefs(bpy.types.AddonPreferences):
     bl_idname = __name__
 
-    keycode: bpy.props.StringProperty(
+    ts_mouse_shortcut: BoolProperty(
+        name='Use Mouse & Modifier Shortcut',
+        description="Use a trigger shortcut with modifier + mouse pressed",
+        default=True,
+        update=auto_rebind)
+
+    ts_mouse_click: EnumProperty(
+        name="Mouse button",
+        description="Click on right/left/middle mouse button in combination with a modifier",
+        default='LEFTMOUSE',
+        items=(
+            ('RIGHTMOUSE', 'Right click',
+             'Use click on Right mouse button', 'MOUSE_RMB', 0),
+            ('LEFTMOUSE', 'Left click',
+             'Use click on Left mouse button', 'MOUSE_LMB', 1),
+            ('MIDDLEMOUSE', 'Mid click',
+             'Use click on Mid mouse button', 'MOUSE_MMB', 2),
+        ),
+        update=auto_rebind)
+
+    ts_use_shift: BoolProperty(
+        name="combine with shift",
+        description="add shift",
+        default=False,
+        update=auto_rebind)
+
+    ts_use_alt: BoolProperty(
+        name="combine with alt",
+        description="add alt",
+        default=True,
+        update=auto_rebind)
+
+    ts_use_ctrl: BoolProperty(
+        name="combine with ctrl",
+        description="add ctrl",
+        default=True,
+        update=auto_rebind)
+
+    keycode: StringProperty(
         name="Shortcut",
         description="Shortcut to trigger the scrub in viewport during press",
         default="F5",
     )
 
-    evaluate_gp_obj_key: bpy.props.BoolProperty(
+    evaluate_gp_obj_key: BoolProperty(
         name='Use Gpencil object keyframes',
         description="Also snap on greasepencil object keyframe (else only active layer frames)",
         default=True)
 
     # options (set) – Enumerator in ['HIDDEN', 'SKIP_SAVE', 'ANIMATABLE', 'LIBRARY_EDITABLE', 'PROPORTIONAL','TEXTEDIT_UPDATE'].
-    pixel_step: bpy.props.IntProperty(
+    pixel_step: IntProperty(
         name="Frame Interval On Screen",
         description="Pixel steps on screen that represent a frame intervals",
         default=10,
@@ -370,32 +466,32 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         step=1,
         subtype='PIXEL')
 
-    use_hud: bpy.props.BoolProperty(
+    use_hud: BoolProperty(
         name='Display HUD',
         description="Display overlays with timeline information when scrubbing time in viewport",
         default=True)
 
-    use_hud_time_line: bpy.props.BoolProperty(
+    use_hud_time_line: BoolProperty(
         name='Timeline',
         description="Display a static marks to represent timeline overlay when scrubbing time in viewport",
         default=True)
 
-    use_hud_playhead: bpy.props.BoolProperty(
+    use_hud_playhead: BoolProperty(
         name='Playhead',
         description="Display the playhead as a vertical line to show position in time",
         default=True)
 
-    use_hud_frame_current: bpy.props.BoolProperty(
+    use_hud_frame_current: BoolProperty(
         name='Text Frame Current',
         description="Display the current frame as text above mouse cursor",
         default=True)
 
-    use_hud_frame_offset: bpy.props.BoolProperty(
+    use_hud_frame_offset: BoolProperty(
         name='Text Frame Offset',
         description="Display frame offset from initial position as text above mouse cursor",
         default=True)
 
-    color_timeline: bpy.props.FloatVectorProperty(
+    color_timeline: FloatVectorProperty(
         name="Timeline Color",
         subtype='COLOR',
         size=4,
@@ -404,17 +500,17 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Color of the temporary timeline"
     )
 
-    color_playhead: bpy.props.FloatVectorProperty(
+    color_playhead: FloatVectorProperty(
         name="Cusor Color",
         subtype='COLOR',
         size=4,
-        default= (0.01, 0.64, 1.0, 0.8), # red (0.9, 0.3, 0.3, 0.8)
+        default=(0.01, 0.64, 1.0, 0.8),  # red (0.9, 0.3, 0.3, 0.8)
         min=0.0, max=1.0,
         description="Color of the temporary line cursor and text"
     )
-    
+
     # - # sizes
-    playhead_size: bpy.props.IntProperty(
+    playhead_size: IntProperty(
         name="Playhead Size",
         description="Playhead height in pixels",
         default=100,
@@ -425,7 +521,7 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         step=1,
         subtype='PIXEL')
 
-    lines_size: bpy.props.IntProperty(
+    lines_size: IntProperty(
         name="Frame Lines Size",
         description="Frame lines height in pixels",
         default=10,
@@ -440,8 +536,36 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         layout = self.layout
         # layout.use_property_split = True
         # row = layout.row(align=True)
+        box = layout.box()
 
-        layout.prop(self, 'keycode')
+        box.prop(self, "ts_mouse_shortcut")  # , expand=True
+        if self.ts_mouse_shortcut:
+            row = box.row()
+            # row.operator("prefs.rebind_shortcut", text='Bind/Rebind shortcuts', icon='FILE_REFRESH')#EVENT_SPACEKEY
+            row = box.row(align=True)
+            row.prop(self, "ts_use_ctrl", text='Ctrl')  # , expand=True
+            row.prop(self, "ts_use_alt", text='Alt')  # , expand=True
+            row.prop(self, "ts_use_shift", text='Shift')  # , expand=True
+            row.prop(self, "ts_mouse_click", text='')  # expand=True
+
+            snap_text = 'Snap to keyframes: '
+
+            snap_text += 'Left Mouse' if self.ts_mouse_click == 'RIGHTMOUSE' else 'Right Mouse'
+            if not self.ts_use_ctrl:
+                snap_text += ' or Ctrl'
+            if not self.ts_use_shift:
+                snap_text += ' or Shift'
+            if not self.ts_use_alt:
+                snap_text += ' or Alt'
+
+            box.label(text=snap_text, icon='SNAP_ON')  # DECORATE_KEYFRAME
+            if not self.ts_use_ctrl and not self.ts_use_alt and not self.ts_use_shift:
+                box.label(
+                    text="Recommanded to choose at least one modifier to combine with click (default: Ctrl+Alt)", icon="ERROR")
+        else:
+            box.prop(self, 'keycode')
+            box.label(text='Snap to keyframes: Right Mouse or Ctrl',
+                      icon='SNAP_ON')  # DECORATE_KEYFRAME
         layout.prop(self, 'evaluate_gp_obj_key')
         # Make a keycode capture system or find a way to display keymap with full_event=True
         layout.prop(self, 'pixel_step')
@@ -485,19 +609,27 @@ def register_keymaps():
     km = addon.keymaps.new(name="Grease Pencil",
                            space_type="EMPTY", region_type='WINDOW')
 
-    kmi = km.keymap_items.new(
-        'animation.time_scrub', type=prefs.keycode, value='PRESS')
-    kmi.repeat = False
-    # kmi = km.keymap_items.new(
-    #     name="name",
-    #     idname="animation.time_scrub",
-    #     type="F",
-    #     value="PRESS",
-    #     shift=True,
-    #     ctrl=True,
-    #     alt = False,
-    #     oskey=False
-    #     )
+    if prefs.ts_mouse_shortcut:
+        kmi = km.keymap_items.new(
+            'animation.time_scrub',
+            type=prefs.ts_mouse_click, value="PRESS",
+            alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift, any=False)
+    else:
+
+        kmi = km.keymap_items.new(
+            'animation.time_scrub',
+            type=prefs.keycode, value='PRESS')
+        kmi.repeat = False
+        # kmi = km.keymap_items.new(
+        #     name="name",
+        #     idname="animation.time_scrub",
+        #     type="F",
+        #     value="PRESS",
+        #     shift=True,
+        #     ctrl=True,
+        #     alt = False,
+        #     oskey=False
+        #     )
     addon_keymaps.append((km, kmi))
 
 
@@ -510,10 +642,8 @@ def unregister_keymaps():
 
 
 classes = (
-    # GPTS_PGT_settings,
     GPTS_addon_prefs,
     GPTS_OT_time_scrub,
-    # GPTS_PT_proj_panel,
 )
 
 
