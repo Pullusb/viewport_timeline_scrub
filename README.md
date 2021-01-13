@@ -75,13 +75,18 @@ Done:
 
 ## Changelog:
 
-0.6.1:
+0.6.2
 
-- feat: Mouse + modifier shortcut (enabled by default)
+- Added support to scrub in VSE and Movie clip editor. without overlay:
+  - Movie clip OK
+  - Disable HUD in VSE: Doesn't get right screen coordinates in preview window
+
+0.6.1
+
+- feat: Mouse + modifier shortcut (enabled by default):
   - Automatically change Snap key to unused modifiers and click
-- Added support for scrub in VSE and Movie clip editor (but openGL doesn't draw overlay)
 
-0.6.0:
+0.6.0
 
 - perf: Improved drawing performance (thanks to [J.Fran Matheu](https://twitter.com/jfranmatheu) for his answers on this)
   - Prepare static drawing batches in invoke
@@ -98,7 +103,7 @@ Done:
 - doc: Marked as WIP in bl_infos
 
 
-0.5.0:
+0.5.0
 
 - feat: Display keyframes on timeline
 
@@ -112,7 +117,7 @@ Done:
 
 - doc: Better readme with demo gif
 
-0.4.2:
+0.4.2
 
 - fix: display HUD/OSD only in active viewport
 
@@ -120,16 +125,16 @@ Done:
 
 - disable onion skin during the modal
 
-0.4.1:
+0.4.1
 
 - fix: corrected an offset bug in time when viewport used was not leftmost in screen
 
-0.4.0:
+0.4.0
 
 - Base text overlay dpi according to user settings
 
 - Snap mode on left click + continuous press
 
-0.3.0:
+0.3.0
 
 - initial commit

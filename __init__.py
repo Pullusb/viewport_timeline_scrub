@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 6, 1),
+    "version": (0, 6, 2),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "Work in progress (stable)",
@@ -117,9 +117,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
     bl_description = "Quick time scrubbing with a shortcut"
     bl_options = {"REGISTER", "INTERNAL", "UNDO"}
 
-    @classmethod
-    def poll(cls, context):
-        return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
+    # @classmethod
+    # def poll(cls, context):
+    #     return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
 
     def invoke(self, context, event):
         prefs = get_addon_prefs()
@@ -284,10 +284,25 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         self.batch_keyframes = batch_for_shader(
             shader, 'LINES', {"pos": self.key_lines})
-        args = (self, context)  # HUD
-
-        self._handle = bpy.types.SpaceView3D.draw_handler_add(
-            draw_callback_px, args, 'WINDOW', 'POST_PIXEL')  # HUD
+        
+        args = (self, context)
+        self.viewtype = None
+        if context.space_data.type == 'VIEW_3D':
+            self.viewtype = bpy.types.SpaceView3D
+            self._handle = bpy.types.SpaceView3D.draw_handler_add(
+                draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        
+        # - # VSE disabling hud : Doesn't get right coordinates in preview window
+        # elif context.space_data.type == 'SEQUENCE_EDITOR':
+        #     self.viewtype = bpy.types.SpaceSequenceEditor
+        #     self._handle = bpy.types.SpaceSequenceEditor.draw_handler_add(
+        #         draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        
+        elif context.space_data.type == 'CLIP_EDITOR':
+            self.viewtype = bpy.types.SpaceClipEditor
+            self._handle = bpy.types.SpaceClipEditor.draw_handler_add(
+                draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -295,7 +310,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         if self.onion_skin is not None:
             self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
         if self.hud:
-            bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            # bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+            self.viewtype.draw_handler_remove(self._handle, 'WINDOW')
             context.area.tag_redraw()
 
     def modal(self, context, event):
