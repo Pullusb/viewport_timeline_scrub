@@ -66,7 +66,7 @@ Done:
 
 ## Changelog:
 
-0.7.0
+0.7.1
 
 - feat: Custom Keymapping change:
   - Modal ops to choose shortcut by pressing it

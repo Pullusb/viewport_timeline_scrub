@@ -307,8 +307,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
     def _exit_modal(self, context):
         if self.onion_skin is not None:
             self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
-        if self.hud:
-            # bpy.types.SpaceView3D.draw_handler_remove(self._handle, 'WINDOW')
+        if self.hud and self.viewtype:
             self.viewtype.draw_handler_remove(self._handle, 'WINDOW')
             context.area.tag_redraw()
 
