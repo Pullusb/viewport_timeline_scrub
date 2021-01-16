@@ -417,17 +417,17 @@ class GPTS_OT_set_scrub_keymap(bpy.types.Operator):
                 self.report({'INFO'}, event.type)
                 # set the chosen key
                 self.prefs.keycode = event.type
-                #-# following condition aren't needed. Just here to avoid unnecessary rebind update (if possible)
-                if self.prefs.ts_use_shift != event.shift: # condition 
+                # -# following condition aren't needed. Just here to avoid unnecessary rebind update (if possible)
+                if self.prefs.ts_use_shift != event.shift:  # condition
                     self.prefs.ts_use_shift = event.shift
 
                 if self.prefs.ts_use_alt != event.alt:
                     self.prefs.ts_use_alt = event.alt
-                
-                #-# Trigger rebind update with last
+
+                # -# Trigger rebind update with last
                 self.prefs.ts_use_ctrl = event.ctrl
 
-                #-# no need to rebind updated by of the modifiers props..
+                # -# no need to rebind updated by of the modifiers props..
                 # auto_rebind()
                 return {'FINISHED'}
 
@@ -551,26 +551,29 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         layout.prop(self, 'evaluate_gp_obj_key')
         # Make a keycode capture system or find a way to display keymap with full_event=True
         layout.prop(self, 'pixel_step')
-        
-        #-/ Keymap -
+
+        # -/ Keymap -
         box = layout.box()
         box.label(text='Keymap:')
         box.operator('animation.ts_set_keymap',
-                        text='Click here to change shortcut')
-        
+                     text='Click here to change shortcut')
+
         if self.keycode:
             row = box.row(align=True)
             row.prop(self, 'ts_use_ctrl', text='Ctrl')
             row.prop(self, 'ts_use_alt', text='Alt')
             row.prop(self, 'ts_use_shift', text='Shift')
-            #-/Cosmetic-
+            # -/Cosmetic-
             icon = None
-            if self.keycode == 'LEFTMOUSE': icon='MOUSE_LMB'
-            elif self.keycode == 'MIDDLEMOUSE': icon='MOUSE_MMB'
-            elif self.keycode == 'RIGHTMOUSE': icon='MOUSE_RMB'
+            if self.keycode == 'LEFTMOUSE':
+                icon = 'MOUSE_LMB'
+            elif self.keycode == 'MIDDLEMOUSE':
+                icon = 'MOUSE_MMB'
+            elif self.keycode == 'RIGHTMOUSE':
+                icon = 'MOUSE_RMB'
             if icon:
                 row.label(text=f'{self.keycode}', icon=icon)
-            #-Cosmetic-/
+            # -Cosmetic-/
             else:
                 row.label(text=f'Key: {self.keycode}')
 
