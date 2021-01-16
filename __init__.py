@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 6, 2),
+    "version": (0, 7, 0),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "Work in progress (stable)",
@@ -117,9 +117,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
     bl_description = "Quick time scrubbing with a shortcut"
     bl_options = {"REGISTER", "INTERNAL", "UNDO"}
 
-    # @classmethod
-    # def poll(cls, context):
-    #     return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
+    @classmethod
+    def poll(cls, context):
+        return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
 
     def invoke(self, context, event):
         prefs = get_addon_prefs()
@@ -132,8 +132,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.key = prefs.keycode
         self.evaluate_gp_obj_key = prefs.evaluate_gp_obj_key
 
-        self.ts_mouse_shortcut = prefs.ts_mouse_shortcut
-        self.ts_mouse_click = prefs.ts_mouse_click
         self.dpi = context.preferences.system.dpi
         self.ui_scale = context.preferences.system.ui_scale
         # hud prefs
@@ -162,7 +160,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.snap_ctrl = not prefs.ts_use_ctrl
         self.snap_shift = not prefs.ts_use_shift
         self.snap_alt = not prefs.ts_use_alt
-        self.snap_mouse_key = 'LEFTMOUSE' if self.ts_mouse_click == 'RIGHTMOUSE' else 'RIGHTMOUSE'
+        self.snap_mouse_key = 'LEFTMOUSE' if self.key == 'RIGHTMOUSE' else 'RIGHTMOUSE'
 
         ob = context.object
 
@@ -284,25 +282,25 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         self.batch_keyframes = batch_for_shader(
             shader, 'LINES', {"pos": self.key_lines})
-        
+
         args = (self, context)
         self.viewtype = None
         if context.space_data.type == 'VIEW_3D':
             self.viewtype = bpy.types.SpaceView3D
             self._handle = bpy.types.SpaceView3D.draw_handler_add(
                 draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
-        
+
         # - # VSE disabling hud : Doesn't get right coordinates in preview window
         # elif context.space_data.type == 'SEQUENCE_EDITOR':
         #     self.viewtype = bpy.types.SpaceSequenceEditor
         #     self._handle = bpy.types.SpaceSequenceEditor.draw_handler_add(
         #         draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
-        
+
         elif context.space_data.type == 'CLIP_EDITOR':
             self.viewtype = bpy.types.SpaceClipEditor
             self._handle = bpy.types.SpaceClipEditor.draw_handler_add(
                 draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
-        
+
         context.window_manager.modal_handler_add(self)
         return {'RUNNING_MODAL'}
 
@@ -315,13 +313,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             context.area.tag_redraw()
 
     def modal(self, context, event):
-        # -# /TESTER - keycode printer (flood console but usefull to know a keycode name)
-        # , 'LEFTMOUSE'# avoid flood of mouse move.
-        # if event.type not in {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE', 'TIMER_REPORT'}:
-        #     print('key:', event.type, 'value:', event.value)
-        #     if event.value == 'PRESS':
-        #         self.report({'INFO'}, event.type)
-        # -#  TESTER/
 
         if event.type == 'MOUSEMOVE':
             # - calculate frame offset from pixel offset
@@ -334,22 +325,16 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.offset = int(px_offset / self.px_step)
             self.new_frame = self.init_frame + self.offset
 
-            if self.ts_mouse_shortcut:
-                mod_snap = False
-                if self.snap_ctrl and event.ctrl:
-                    mod_snap = True
-                if self.snap_shift and event.shift:
-                    mod_snap = True
-                if self.snap_alt and event.alt:
-                    mod_snap = True
+            mod_snap = False
+            if self.snap_ctrl and event.ctrl:
+                mod_snap = True
+            if self.snap_shift and event.shift:
+                mod_snap = True
+            if self.snap_alt and event.alt:
+                mod_snap = True
 
-                if self.snap_on or mod_snap:
-                    self.new_frame = nearest(self.pos, self.new_frame)
-
-            else:
-                if self.snap_on or event.ctrl:
-                    self.new_frame = nearest(self.pos, self.new_frame)
-                    # snap mode
+            if self.snap_on or mod_snap:
+                self.new_frame = nearest(self.pos, self.new_frame)
 
             # context.scene.frame_set(self.new_frame)
             context.scene.frame_current = self.new_frame
@@ -369,44 +354,22 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self._exit_modal(context)
             return {'CANCELLED'}
 
-        # - # Mouse
-        if self.ts_mouse_shortcut:
-            # Snap if pressing NOT used mouse key (right or mid)
-            if event.type == self.snap_mouse_key:
-                if event.value == "PRESS":
-                    self.snap_on = True
-                else:
-                    self.snap_on = False
+        # Snap if pressing NOT used mouse key (right or mid)
+        if event.type == self.snap_mouse_key:
+            if event.value == "PRESS":
+                self.snap_on = True
+            else:
+                self.snap_on = False
 
-            if event.type == self.ts_mouse_click and event.value == 'RELEASE':
-                self._exit_modal(context)
-                return {'FINISHED'}
+        if event.type == self.key and event.value == 'RELEASE':
+            self._exit_modal(context)
+            return {'FINISHED'}
 
-        # - # Single press
-        else:
-            # snap if using right mouse
-            if event.type == 'RIGHTMOUSE':
-                if event.value == "PRESS":
-                    self.snap_on = True
-                else:
-                    self.snap_on = False
-
-                # self.new_frame = nearest(self.pos, self.new_frame)
-                # self.offset = self.new_frame - self.init_frame
-                # context.scene.frame_current = self.new_frame
-
-            # if event.type in {'RIGHTMOUSE', 'ESC'}:
-
-            if event.type == self.key and event.value == "RELEASE":
-                # - trigger key release
-                self._exit_modal(context)
-                return {'FINISHED'}
-
-            # End modal on right clic release ? (relaunched immediately if main key not released)
-            # if event.type == 'LEFTMOUSE':
-            #     if event.value == "RELEASE":
-            #         self._exit_modal(context)
-            #         return {'FINISHED'}
+        # End modal on right clic release ? (relaunched immediately if main key not released)
+        # if event.type == 'LEFTMOUSE':
+        #     if event.value == "RELEASE":
+        #         self._exit_modal(context)
+        #         return {'FINISHED'}
 
         return {"RUNNING_MODAL"}
 
@@ -418,52 +381,84 @@ def auto_rebind(self, context):
     register_keymaps()
 
 
+class GPTS_OT_set_scrub_keymap(bpy.types.Operator):
+    bl_idname = "animation.ts_set_keymap"
+    bl_label = "Change keymap"
+    bl_description = "Quick time scrubbing with a shortcut"
+    bl_options = {"REGISTER", "INTERNAL"}
+
+    def invoke(self, context, event):
+        self.prefs = get_addon_prefs()
+        self.ctrl = False
+        self.shift = False
+        self.alt = False
+
+        self.init_value = self.prefs.keycode
+        self.prefs.keycode = ''
+        context.window_manager.modal_handler_add(self)
+        return {'RUNNING_MODAL'}
+
+    def modal(self, context, event):
+        exclude_keys = {'MOUSEMOVE', 'INBETWEEN_MOUSEMOVE',
+                        'TIMER_REPORT', 'ESC', 'WHEELUPMOUSE', 'WHEELDOWNMOUSE'}
+        exclude_in = ('SHIFT', 'CTRL', 'ALT')
+        if event.type == 'ESC':
+            self.prefs.keycode = self.init_value
+            # self.report({'WARNING'}, 'Cancelled')
+            return {'CANCELLED'}
+
+        self.ctrl = event.ctrl
+        self.shift = event.shift
+        self.alt = event.alt
+
+        if event.type not in exclude_keys and not any(x in event.type for x in exclude_in):
+            print('key:', event.type, 'value:', event.value)
+            if event.value == 'PRESS':
+                self.report({'INFO'}, event.type)
+                # set the chosen key
+                self.prefs.keycode = event.type
+                #-# following condition aren't needed. Just here to avoid unnecessary rebind update (if possible)
+                if self.prefs.ts_use_shift != event.shift: # condition 
+                    self.prefs.ts_use_shift = event.shift
+
+                if self.prefs.ts_use_alt != event.alt:
+                    self.prefs.ts_use_alt = event.alt
+                
+                #-# Trigger rebind update with last
+                self.prefs.ts_use_ctrl = event.ctrl
+
+                #-# no need to rebind updated by of the modifiers props..
+                # auto_rebind()
+                return {'FINISHED'}
+
+        return {"RUNNING_MODAL"}
+
+
 class GPTS_addon_prefs(bpy.types.AddonPreferences):
     bl_idname = __name__
-
-    ts_mouse_shortcut: BoolProperty(
-        name='Use Mouse & Modifier Shortcut',
-        description="Use a trigger shortcut with modifier + mouse pressed",
-        default=True,
-        update=auto_rebind)
-
-    ts_mouse_click: EnumProperty(
-        name="Mouse button",
-        description="Click on right/left/middle mouse button in combination with a modifier",
-        default='LEFTMOUSE',
-        items=(
-            ('RIGHTMOUSE', 'Right click',
-             'Use click on Right mouse button', 'MOUSE_RMB', 0),
-            ('LEFTMOUSE', 'Left click',
-             'Use click on Left mouse button', 'MOUSE_LMB', 1),
-            ('MIDDLEMOUSE', 'Mid click',
-             'Use click on Mid mouse button', 'MOUSE_MMB', 2),
-        ),
-        update=auto_rebind)
-
-    ts_use_shift: BoolProperty(
-        name="combine with shift",
-        description="add shift",
-        default=False,
-        update=auto_rebind)
-
-    ts_use_alt: BoolProperty(
-        name="combine with alt",
-        description="add alt",
-        default=True,
-        update=auto_rebind)
-
-    ts_use_ctrl: BoolProperty(
-        name="combine with ctrl",
-        description="add ctrl",
-        default=True,
-        update=auto_rebind)
 
     keycode: StringProperty(
         name="Shortcut",
         description="Shortcut to trigger the scrub in viewport during press",
-        default="F5",
-    )
+        default="MIDDLEMOUSE")
+
+    ts_use_shift: BoolProperty(
+        name="Combine With Shift",
+        description="Add shift",
+        default=False,
+        update=auto_rebind)
+
+    ts_use_alt: BoolProperty(
+        name="Combine With Alt",
+        description="Add alt",
+        default=True,
+        update=auto_rebind)
+
+    ts_use_ctrl: BoolProperty(
+        name="Combine With Ctrl",
+        description="Add ctrl",
+        default=False,
+        update=auto_rebind)
 
     evaluate_gp_obj_key: BoolProperty(
         name='Use Gpencil object keyframes',
@@ -551,44 +546,56 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
     def draw(self, context):
         layout = self.layout
         # layout.use_property_split = True
-        # row = layout.row(align=True)
-        box = layout.box()
 
-        box.prop(self, "ts_mouse_shortcut")  # , expand=True
-        if self.ts_mouse_shortcut:
-            row = box.row()
-            # row.operator("prefs.rebind_shortcut", text='Bind/Rebind shortcuts', icon='FILE_REFRESH')#EVENT_SPACEKEY
-            row = box.row(align=True)
-            row.prop(self, "ts_use_ctrl", text='Ctrl')  # , expand=True
-            row.prop(self, "ts_use_alt", text='Alt')  # , expand=True
-            row.prop(self, "ts_use_shift", text='Shift')  # , expand=True
-            row.prop(self, "ts_mouse_click", text='')  # expand=True
-
-            snap_text = 'Snap to keyframes: '
-
-            snap_text += 'Left Mouse' if self.ts_mouse_click == 'RIGHTMOUSE' else 'Right Mouse'
-            if not self.ts_use_ctrl:
-                snap_text += ' or Ctrl'
-            if not self.ts_use_shift:
-                snap_text += ' or Shift'
-            if not self.ts_use_alt:
-                snap_text += ' or Alt'
-
-            box.label(text=snap_text, icon='SNAP_ON')  # DECORATE_KEYFRAME
-            if not self.ts_use_ctrl and not self.ts_use_alt and not self.ts_use_shift:
-                box.label(
-                    text="Recommanded to choose at least one modifier to combine with click (default: Ctrl+Alt)", icon="ERROR")
-        else:
-            box.prop(self, 'keycode')
-            box.label(text='Snap to keyframes: Right Mouse or Ctrl',
-                      icon='SNAP_ON')  # DECORATE_KEYFRAME
+        # - # General settings
         layout.prop(self, 'evaluate_gp_obj_key')
         # Make a keycode capture system or find a way to display keymap with full_event=True
         layout.prop(self, 'pixel_step')
+        
+        #-/ Keymap -
+        box = layout.box()
+        box.label(text='Keymap:')
+        box.operator('animation.ts_set_keymap',
+                        text='Click here to change shortcut')
+        
+        if self.keycode:
+            row = box.row(align=True)
+            row.prop(self, 'ts_use_ctrl', text='Ctrl')
+            row.prop(self, 'ts_use_alt', text='Alt')
+            row.prop(self, 'ts_use_shift', text='Shift')
+            #-/Cosmetic-
+            icon = None
+            if self.keycode == 'LEFTMOUSE': icon='MOUSE_LMB'
+            elif self.keycode == 'MIDDLEMOUSE': icon='MOUSE_MMB'
+            elif self.keycode == 'RIGHTMOUSE': icon='MOUSE_RMB'
+            if icon:
+                row.label(text=f'{self.keycode}', icon=icon)
+            #-Cosmetic-/
+            else:
+                row.label(text=f'Key: {self.keycode}')
 
-        layout.prop(self, 'use_hud')
+        else:
+            box.label(text='[ NOW TYPE KEY OR CLICK TO USE WITH MODIFIER ]')
 
-        col = layout.column()
+        snap_text = 'Snap to keyframes: '
+        snap_text += 'Left Mouse' if self.keycode == 'RIGHTMOUSE' else 'Right Mouse'
+        if not self.ts_use_ctrl:
+            snap_text += ' or Ctrl'
+        if not self.ts_use_shift:
+            snap_text += ' or Shift'
+        if not self.ts_use_alt:
+            snap_text += ' or Alt'
+        box.label(text=snap_text, icon='SNAP_ON')
+        if self.keycode in ('LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE') and not self.ts_use_ctrl and not self.ts_use_alt and not self.ts_use_shift:
+            box.label(
+                text="Recommended to choose at least one modifier to combine with clicks (default: Ctrl+Alt)", icon="ERROR")
+
+        # - # HUD/OSD
+
+        box = layout.box()
+        box.prop(self, 'use_hud')
+
+        col = box.column()
         row = col.row()
         row.prop(self, 'color_timeline')
         row.prop(self, 'color_playhead', text='Cursor And Text Color')
@@ -625,27 +632,14 @@ def register_keymaps():
     km = addon.keymaps.new(name="Grease Pencil",
                            space_type="EMPTY", region_type='WINDOW')
 
-    if prefs.ts_mouse_shortcut:
-        kmi = km.keymap_items.new(
-            'animation.time_scrub',
-            type=prefs.ts_mouse_click, value="PRESS",
-            alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift, any=False)
-    else:
-
-        kmi = km.keymap_items.new(
-            'animation.time_scrub',
-            type=prefs.keycode, value='PRESS')
-        kmi.repeat = False
-        # kmi = km.keymap_items.new(
-        #     name="name",
-        #     idname="animation.time_scrub",
-        #     type="F",
-        #     value="PRESS",
-        #     shift=True,
-        #     ctrl=True,
-        #     alt = False,
-        #     oskey=False
-        #     )
+    if not prefs.keycode:
+        print(r'/!\ Timeline scrub: no keycode entered for keymap')
+        return
+    kmi = km.keymap_items.new(
+        'animation.time_scrub',
+        type=prefs.keycode, value='PRESS',
+        alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift, any=False)
+    kmi.repeat = False
     addon_keymaps.append((km, kmi))
 
 
@@ -660,6 +654,7 @@ def unregister_keymaps():
 classes = (
     GPTS_addon_prefs,
     GPTS_OT_time_scrub,
+    GPTS_OT_set_scrub_keymap,
 )
 
 
