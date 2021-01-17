@@ -68,6 +68,11 @@ Done:
 
 0.7.1
 
+- fix: VSE display now working as expected (HUD in preview window)
+- 
+
+0.7.0
+
 - feat: Custom Keymapping change:
   - Modal ops to choose shortcut by pressing it
   - Customisable shortcut allowed (both mouse or keyboard)

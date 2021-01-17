@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 0),
+    "version": (0, 7, 1),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "Work in progress (stable)",
@@ -190,7 +190,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
                         if frame.frame_number not in self.pos:
                             self.pos.append(frame.frame_number)
 
-        # - Add start and end to snap on ?
+        # - Add start and end to snap on
         if context.scene.use_preview_range:
             play_bounds = [context.scene.frame_preview_start,
                            context.scene.frame_preview_end]
@@ -219,7 +219,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             hud_pos_x.append(self.init_mouse_x + i*self.px_step)
 
         # - list of double coords
-        # TODO how to trace the grid only once
 
         init_height = 60
         frame_height = self.lines_size
@@ -285,16 +284,19 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         args = (self, context)
         self.viewtype = None
+        self.spacetype = 'WINDOW'  # is PREVIEW for VSE, needed for handler remove
+
         if context.space_data.type == 'VIEW_3D':
             self.viewtype = bpy.types.SpaceView3D
             self._handle = bpy.types.SpaceView3D.draw_handler_add(
                 draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
 
         # - # VSE disabling hud : Doesn't get right coordinates in preview window
-        # elif context.space_data.type == 'SEQUENCE_EDITOR':
-        #     self.viewtype = bpy.types.SpaceSequenceEditor
-        #     self._handle = bpy.types.SpaceSequenceEditor.draw_handler_add(
-        #         draw_callback_px, args, 'WINDOW', 'POST_PIXEL')
+        elif context.space_data.type == 'SEQUENCE_EDITOR':
+            self.viewtype = bpy.types.SpaceSequenceEditor
+            self.spacetype = 'PREVIEW'
+            self._handle = bpy.types.SpaceSequenceEditor.draw_handler_add(
+                draw_callback_px, args, 'PREVIEW', 'POST_PIXEL')
 
         elif context.space_data.type == 'CLIP_EDITOR':
             self.viewtype = bpy.types.SpaceClipEditor
@@ -307,8 +309,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
     def _exit_modal(self, context):
         if self.onion_skin is not None:
             self.active_space_data.overlay.use_gpencil_onion_skin = self.onion_skin
+
         if self.hud and self.viewtype:
-            self.viewtype.draw_handler_remove(self._handle, 'WINDOW')
+            self.viewtype.draw_handler_remove(self._handle, self.spacetype)
             context.area.tag_redraw()
 
     def modal(self, context, event):
@@ -577,7 +580,7 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
                 row.label(text=f'Key: {self.keycode}')
 
         else:
-            box.label(text='[ NOW TYPE KEY OR CLICK TO USE WITH MODIFIER ]')
+            box.label(text='[ NOW TYPE KEY OR CLICK TO USE, WITH MODIFIER ]')
 
         snap_text = 'Snap to keyframes: '
         snap_text += 'Left Mouse' if self.keycode == 'RIGHTMOUSE' else 'Right Mouse'
