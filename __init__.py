@@ -18,10 +18,10 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 1),
+    "version": (0, 7, 2),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
-    "warning": "Work in progress (stable)",
+    "warning": "",
     "doc_url": "https://github.com/Pullusb/scrub_timeline",
     "category": "Object"}
 
@@ -41,6 +41,9 @@ def draw_callback_px(self, context):
         return
     ## lines and shaders
     # 50% alpha, 2 pixel width line
+    
+    # text
+    font_id = 0
 
     shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
     bgl.glEnable(bgl.GL_BLEND)
@@ -69,6 +72,14 @@ def draw_callback_px(self, context):
     #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
     #     batch.draw(shader)
 
+    # - # Display init frame text (under playhead)
+    # if self.use_hud_frame_init: # propertie not existing currently
+    # blf.position(font_id, self.init_mouse_x,
+    #                 self.init_mouse_y - (60 *self.ui_scale), 0)
+    # blf.size(font_id, 16, self.dpi)
+    # blf.color(font_id, *self.color_timeline)
+    # blf.draw(font_id, f'{self.init_frame:.0f}')
+
     # - # Show current frame line
     if self.use_hud_playhead:
         bgl.glLineWidth(1)
@@ -85,8 +96,6 @@ def draw_callback_px(self, context):
     bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
 
-    # text
-    font_id = 0
 
     # - # Display current frame text
     blf.color(font_id, *self.color_text)
@@ -105,10 +114,6 @@ def draw_callback_px(self, context):
         sign = '+' if self.offset > 0 else ''
         blf.draw(font_id, f'{sign}{self.offset:.0f}')
 
-    # Draw text debug infos at bottom left
-    # blf.position(font_id, 15, 30, 0)
-    # blf.size(font_id, 20, 72)
-    # blf.draw(font_id, f'Infos - mouse coord: {self.mouse}')
 
 
 class GPTS_OT_time_scrub(bpy.types.Operator):
@@ -152,6 +157,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.snap_on = False
         self.mouse = (event.mouse_region_x, event.mouse_region_y)
         self.init_mouse_x = self.cursor_x = event.mouse_region_x  # event.mouse_x
+        # self.init_mouse_y = event.mouse_region_y # only to display init frame text
         self.init_frame = self.new_frame = context.scene.frame_current
         self.offset = 0
         self.pos = []
@@ -197,7 +203,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         else:
             play_bounds = [context.scene.frame_start, context.scene.frame_end]
 
-        self.pos += play_bounds
+        self.pos += play_bounds  # Also snap on play bounds (sliced off for keyframe display)
         self.pos = np.asarray(self.pos)
 
         self.hud = prefs.use_hud
@@ -223,6 +229,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         init_height = 60
         frame_height = self.lines_size
         key_height = 14
+        bound_h = key_height + 19
+        bound_bracket_l = self.px_step/2
 
         self.my = my = event.mouse_region_y  # event.mouse_y
 
@@ -236,6 +244,35 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.hud_lines += [(self.init_mouse_x, my - (init_height/2)),
                            (self.init_mouse_x, my + (init_height/2))]
 
+        # Add start/end boundary bracket to HUD
+
+        start_x = self.init_mouse_x + \
+            (play_bounds[0] - self.init_frame) * self.px_step
+        end_x = self.init_mouse_x + \
+            (play_bounds[1] - self.init_frame) * self.px_step
+
+        # - # start
+        up = (start_x, my - (bound_h/2))
+        dn = (start_x, my + (bound_h/2))
+        self.hud_lines.append(up)
+        self.hud_lines.append(dn)
+
+        self.hud_lines.append(up)
+        self.hud_lines.append((up[0] + bound_bracket_l, up[1]))
+        self.hud_lines.append(dn)
+        self.hud_lines.append((dn[0] + bound_bracket_l, dn[1]))
+
+        # - # end
+        up = (end_x, my - (bound_h/2))
+        dn = (end_x, my + (bound_h/2))
+        self.hud_lines.append(up)
+        self.hud_lines.append(dn)
+
+        self.hud_lines.append(up)
+        self.hud_lines.append((up[0] - bound_bracket_l, up[1]))
+        self.hud_lines.append(dn)
+        self.hud_lines.append((dn[0] - bound_bracket_l, dn[1]))
+
         # - # Horizontal line
         self.hud_lines += [(0, my), (width, my)]
 
@@ -246,7 +283,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         # - # keyframe display
         self.key_lines = []
-        for i in self.pos:
+        # Slice off position of start/end frame added last (in list for snapping)
+        for i in self.pos[:-2]:
             self.key_lines.append(
                 (self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
             self.key_lines.append(

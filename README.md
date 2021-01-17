@@ -66,10 +66,11 @@ Done:
 
 ## Changelog:
 
-0.7.1
+0.7.2
 
-- fix: VSE display now working as expected (HUD in preview window)
-- 
+- fix: VSE display now working as expected (HUD on preview window)
+- feat: add bracket style lines to display frame range
+- fix: hide the misleading keyframe icon on start/end frame range
 
 0.7.0
 
