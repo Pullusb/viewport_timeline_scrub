@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 2),
+    "version": (0, 7, 3),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
@@ -41,7 +41,7 @@ def draw_callback_px(self, context):
         return
     ## lines and shaders
     # 50% alpha, 2 pixel width line
-    
+
     # text
     font_id = 0
 
@@ -96,7 +96,6 @@ def draw_callback_px(self, context):
     bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
 
-
     # - # Display current frame text
     blf.color(font_id, *self.color_text)
     if self.use_hud_frame_current:
@@ -113,7 +112,6 @@ def draw_callback_px(self, context):
         # blf.color(font_id, *self.color_text)
         sign = '+' if self.offset > 0 else ''
         blf.draw(font_id, f'{sign}{self.offset:.0f}')
-
 
 
 class GPTS_OT_time_scrub(bpy.types.Operator):
@@ -203,7 +201,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         else:
             play_bounds = [context.scene.frame_start, context.scene.frame_end]
 
-        self.pos += play_bounds  # Also snap on play bounds (sliced off for keyframe display)
+        # Also snap on play bounds (sliced off for keyframe display)
+        self.pos += play_bounds
         self.pos = np.asarray(self.pos)
 
         self.hud = prefs.use_hud
@@ -482,6 +481,12 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Shortcut to trigger the scrub in viewport during press",
         default="MIDDLEMOUSE")
 
+    ts_use_in_timeline_editor: BoolProperty(
+        name="Shortcut in timeline editors",
+        description="Add the same shortcut to scrub in timeline editor windows",
+        default=True,
+        update=auto_rebind)
+
     ts_use_shift: BoolProperty(
         name="Combine With Shift",
         description="Add shift",
@@ -633,6 +638,9 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
             box.label(
                 text="Recommended to choose at least one modifier to combine with clicks (default: Ctrl+Alt)", icon="ERROR")
 
+        box.prop(self, 'ts_use_in_timeline_editor',
+                 text='Add same shortcut to scrub within timeline editors')
+
         # - # HUD/OSD
 
         box = layout.box()
@@ -684,6 +692,26 @@ def register_keymaps():
         alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift, any=False)
     kmi.repeat = False
     addon_keymaps.append((km, kmi))
+
+    # - # Add keymap in timeline editors
+    if prefs.ts_use_in_timeline_editor:
+
+        editor_l = [
+            ('Dopesheet', 'DOPESHEET_EDITOR', 'anim.change_frame'),
+            ('Graph Editor', 'GRAPH_EDITOR', 'graph.cursor_set'),
+            ("NLA Editor", "NLA_EDITOR", 'anim.change_frame'),
+            ("Sequencer", "SEQUENCE_EDITOR", 'anim.change_frame')
+            # ("Clip Graph Editor", "CLIP_EDITOR", 'clip.change_frame'),
+        ]
+
+        for editor, space, operator in editor_l:
+            # region_type='WINDOW')
+            km = addon.keymaps.new(name=editor, space_type=space)
+            kmi = km.keymap_items.new(
+                operator, type=prefs.keycode, value='PRESS',
+                alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift)
+            # kmi.repeat = False
+            addon_keymaps.append((km, kmi))
 
 
 def unregister_keymaps():

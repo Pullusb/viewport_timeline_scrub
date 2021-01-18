@@ -68,6 +68,16 @@ Done:
 
 ## Changelog:
 
+0.7.3
+
+- feat: Added native scrub with in timeline editors with addon defined shortcut (Same ops as `shift Right mouse`):
+  - `Dopesheet`
+  - `Graph Editor`
+  - `NLA Editor`
+  - `Sequencer`
+  - ! not in `Clip Graph Editor` Where the behavior is broken...
+- Added preference option to enable/disable shortcut propagation in timeline editors
+
 0.7.2
 
 - fix: VSE display now working as expected (HUD on preview window)
