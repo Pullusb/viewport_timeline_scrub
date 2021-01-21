@@ -4,7 +4,7 @@ Move in the timeline directly in viewport and snap to nearest keyframe
 
 ## Note : This standalone feature will be added in the native add-on _Grease Pencil Tools_ (Starting 2.93)
 
-**[Download latest](https://github.com/Pullusb/viewport_timeline_scrub/archive/master.zip)**
+**[Download latest](https://github.com/Pullusb/viewport_timeline_scrub/archive/main.zip)**
 
 <!-- ### [Demo Youtube]() -->
 
