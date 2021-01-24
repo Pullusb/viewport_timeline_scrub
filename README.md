@@ -68,6 +68,11 @@ Done:
 
 ## Changelog:
 
+
+0.7.4
+
+- fix: bug when HUD is disabled
+
 0.7.3
 
 - feat: Added native scrub with in timeline editors with addon defined shortcut (Same ops as `shift Right mouse`):

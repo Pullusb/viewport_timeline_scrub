@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 3),
+    "version": (0, 7, 4),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
@@ -56,21 +56,22 @@ def draw_callback_px(self, context):
         self.batch_timeline.draw(shader)
 
     # - # Display keyframes
-    bgl.glLineWidth(3)
-    shader.bind()
-    shader.uniform_float("color", self.color_timeline)
-    self.batch_keyframes.draw(shader)
+    if self.use_hud_keyframes:
+        bgl.glLineWidth(3)
+        shader.bind()
+        shader.uniform_float("color", self.color_timeline)
+        self.batch_keyframes.draw(shader)
 
-    # - # Display keyframe as diamonds
-    # for k in self.key_diamonds:
-    #     batch = batch_for_shader(shader, 'TRIS', {"pos": k}, indices=self.indices)
-    #     shader.bind()
-    #     # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
-    #     # shader.uniform_float("color", self.color_timeline)
-    #     # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
-    #     shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
-    #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
-    #     batch.draw(shader)
+        # - # Display keyframe as diamonds
+        # for k in self.key_diamonds:
+        #     batch = batch_for_shader(shader, 'TRIS', {"pos": k}, indices=self.indices)
+        #     shader.bind()
+        #     # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
+        #     # shader.uniform_float("color", self.color_timeline)
+        #     # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
+        #     shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
+        #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
+        #     batch.draw(shader)
 
     # - # Display init frame text (under playhead)
     # if self.use_hud_frame_init: # propertie not existing currently
@@ -81,8 +82,8 @@ def draw_callback_px(self, context):
     # blf.draw(font_id, f'{self.init_frame:.0f}')
 
     # - # Show current frame line
+    bgl.glLineWidth(1)
     if self.use_hud_playhead:
-        bgl.glLineWidth(1)
         # -# old full height playhead
         # playhead = [(self.cursor_x, 0), (self.cursor_x, context.area.height)]
         playhead = [(self.cursor_x, self.my + self.playhead_size/2),
@@ -93,7 +94,6 @@ def draw_callback_px(self, context):
         batch.draw(shader)
 
     # restore opengl defaults
-    bgl.glLineWidth(1)
     bgl.glDisable(bgl.GL_BLEND)
 
     # - # Display current frame text
@@ -142,6 +142,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.color_playhead = prefs.color_playhead
         self.color_text = prefs.color_playhead
         self.use_hud_time_line = prefs.use_hud_time_line
+        self.use_hud_keyframes = prefs.use_hud_keyframes
         self.use_hud_playhead = prefs.use_hud_playhead
         self.use_hud_frame_current = prefs.use_hud_frame_current
         self.use_hud_frame_offset = prefs.use_hud_frame_offset
@@ -161,9 +162,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.pos = []
 
         # Snap touch control
-        self.snap_ctrl = not prefs.ts_use_ctrl
-        self.snap_shift = not prefs.ts_use_shift
-        self.snap_alt = not prefs.ts_use_alt
+        self.snap_ctrl = not prefs.use_ctrl
+        self.snap_shift = not prefs.use_shift
+        self.snap_alt = not prefs.use_alt
         self.snap_mouse_key = 'LEFTMOUSE' if self.key == 'RIGHTMOUSE' else 'RIGHTMOUSE'
 
         ob = context.object
@@ -204,6 +205,13 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # Also snap on play bounds (sliced off for keyframe display)
         self.pos += play_bounds
         self.pos = np.asarray(self.pos)
+
+        # Disable Onion skin
+        self.active_space_data = context.space_data
+        self.onion_skin = None
+        if context.space_data.type == 'VIEW_3D': # and 'GPENCIL' in context.mode
+            self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
+            self.active_space_data.overlay.use_gpencil_onion_skin = False
 
         self.hud = prefs.use_hud
         if not self.hud:
@@ -302,13 +310,6 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         #     # (center+keysize, my+keysize+upper), (center+keysize, my-keysize+upper) # square
         #     ))
         # self.indices = ((0, 1, 2), (0, 2, 3))
-
-        # Disable Onion skin
-        self.active_space_data = context.space_data
-        self.onion_skin = None
-        if context.space_data.type == 'VIEW_3D':
-            self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
-            self.active_space_data.overlay.use_gpencil_onion_skin = False
 
         # - # Prepare batchs to draw static parts
 
@@ -457,14 +458,14 @@ class GPTS_OT_set_scrub_keymap(bpy.types.Operator):
                 # set the chosen key
                 self.prefs.keycode = event.type
                 # -# following condition aren't needed. Just here to avoid unnecessary rebind update (if possible)
-                if self.prefs.ts_use_shift != event.shift:  # condition
-                    self.prefs.ts_use_shift = event.shift
+                if self.prefs.use_shift != event.shift:  # condition
+                    self.prefs.use_shift = event.shift
 
-                if self.prefs.ts_use_alt != event.alt:
-                    self.prefs.ts_use_alt = event.alt
+                if self.prefs.use_alt != event.alt:
+                    self.prefs.use_alt = event.alt
 
                 # -# Trigger rebind update with last
-                self.prefs.ts_use_ctrl = event.ctrl
+                self.prefs.use_ctrl = event.ctrl
 
                 # -# no need to rebind updated by of the modifiers props..
                 # auto_rebind()
@@ -481,25 +482,25 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         description="Shortcut to trigger the scrub in viewport during press",
         default="MIDDLEMOUSE")
 
-    ts_use_in_timeline_editor: BoolProperty(
+    use_in_timeline_editor: BoolProperty(
         name="Shortcut in timeline editors",
         description="Add the same shortcut to scrub in timeline editor windows",
         default=True,
         update=auto_rebind)
 
-    ts_use_shift: BoolProperty(
+    use_shift: BoolProperty(
         name="Combine With Shift",
         description="Add shift",
         default=False,
         update=auto_rebind)
 
-    ts_use_alt: BoolProperty(
+    use_alt: BoolProperty(
         name="Combine With Alt",
         description="Add alt",
         default=True,
         update=auto_rebind)
 
-    ts_use_ctrl: BoolProperty(
+    use_ctrl: BoolProperty(
         name="Combine With Ctrl",
         description="Add ctrl",
         default=False,
@@ -529,7 +530,12 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
 
     use_hud_time_line: BoolProperty(
         name='Timeline',
-        description="Display a static marks to represent timeline overlay when scrubbing time in viewport",
+        description="Display a static marks overlay to represent timeline when scrubbing",
+        default=True)
+
+    use_hud_keyframes: BoolProperty(
+        name='Keyframes',
+        description="Display shapes overlay to show keyframe position when scrubbing",
         default=True)
 
     use_hud_playhead: BoolProperty(
@@ -605,9 +611,9 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
 
         if self.keycode:
             row = box.row(align=True)
-            row.prop(self, 'ts_use_ctrl', text='Ctrl')
-            row.prop(self, 'ts_use_alt', text='Alt')
-            row.prop(self, 'ts_use_shift', text='Shift')
+            row.prop(self, 'use_ctrl', text='Ctrl')
+            row.prop(self, 'use_alt', text='Alt')
+            row.prop(self, 'use_shift', text='Shift')
             # -/Cosmetic-
             icon = None
             if self.keycode == 'LEFTMOUSE':
@@ -627,18 +633,18 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
 
         snap_text = 'Snap to keyframes: '
         snap_text += 'Left Mouse' if self.keycode == 'RIGHTMOUSE' else 'Right Mouse'
-        if not self.ts_use_ctrl:
+        if not self.use_ctrl:
             snap_text += ' or Ctrl'
-        if not self.ts_use_shift:
+        if not self.use_shift:
             snap_text += ' or Shift'
-        if not self.ts_use_alt:
+        if not self.use_alt:
             snap_text += ' or Alt'
         box.label(text=snap_text, icon='SNAP_ON')
-        if self.keycode in ('LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE') and not self.ts_use_ctrl and not self.ts_use_alt and not self.ts_use_shift:
+        if self.keycode in ('LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE') and not self.use_ctrl and not self.use_alt and not self.use_shift:
             box.label(
                 text="Recommended to choose at least one modifier to combine with clicks (default: Ctrl+Alt)", icon="ERROR")
 
-        box.prop(self, 'ts_use_in_timeline_editor',
+        box.prop(self, 'use_in_timeline_editor',
                  text='Add same shortcut to scrub within timeline editors')
 
         # - # HUD/OSD
@@ -689,12 +695,12 @@ def register_keymaps():
     kmi = km.keymap_items.new(
         'animation.time_scrub',
         type=prefs.keycode, value='PRESS',
-        alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift, any=False)
+        alt=prefs.use_alt, ctrl=prefs.use_ctrl, shift=prefs.use_shift, any=False)
     kmi.repeat = False
     addon_keymaps.append((km, kmi))
 
     # - # Add keymap in timeline editors
-    if prefs.ts_use_in_timeline_editor:
+    if prefs.use_in_timeline_editor:
 
         editor_l = [
             ('Dopesheet', 'DOPESHEET_EDITOR', 'anim.change_frame'),
@@ -709,7 +715,7 @@ def register_keymaps():
             km = addon.keymaps.new(name=editor, space_type=space)
             kmi = km.keymap_items.new(
                 operator, type=prefs.keycode, value='PRESS',
-                alt=prefs.ts_use_alt, ctrl=prefs.ts_use_ctrl, shift=prefs.ts_use_shift)
+                alt=prefs.use_alt, ctrl=prefs.use_ctrl, shift=prefs.use_shift)
             # kmi.repeat = False
             addon_keymaps.append((km, kmi))
 
