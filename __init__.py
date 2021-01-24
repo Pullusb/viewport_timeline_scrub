@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 4),
+    "version": (0, 7, 5),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
@@ -57,21 +57,21 @@ def draw_callback_px(self, context):
 
     # - # Display keyframes
     if self.use_hud_keyframes:
-        bgl.glLineWidth(3)
-        shader.bind()
-        shader.uniform_float("color", self.color_timeline)
-        self.batch_keyframes.draw(shader)
-
-        # - # Display keyframe as diamonds
-        # for k in self.key_diamonds:
-        #     batch = batch_for_shader(shader, 'TRIS', {"pos": k}, indices=self.indices)
-        #     shader.bind()
-        #     # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
-        #     # shader.uniform_float("color", self.color_timeline)
-        #     # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
-        #     shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
-        #     # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
-        #     batch.draw(shader)
+        if self.keyframe_aspect == 'LINE':
+            bgl.glLineWidth(3)
+            shader.bind()
+            shader.uniform_float("color", self.color_timeline)
+            self.batch_keyframes.draw(shader)
+        else:
+            # - # Display keyframe as diamonds
+            bgl.glLineWidth(1)
+            shader.bind()
+            shader.uniform_float("color", self.color_timeline)
+            # shader.uniform_float("color", list(self.color_timeline[:3]) + [1]) # timeline color full opacity
+            # shader.uniform_float("color", (0.8, 0.8, 0.8, 0.8)) # grey
+            # shader.uniform_float("color", (0.9, 0.69, 0.027, 1.0)) # yellow-ish
+            # shader.uniform_float("color",(1.0, 0.515, 0.033, 1.0)) # orange 'selected keyframe'
+            self.batch_keyframes.draw(shader)
 
     # - # Display init frame text (under playhead)
     # if self.use_hud_frame_init: # propertie not existing currently
@@ -125,7 +125,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         return context.space_data.type in ('VIEW_3D', 'SEQUENCE_EDITOR', 'CLIP_EDITOR')
 
     def invoke(self, context, event):
-        prefs = get_addon_prefs()
+        prefs = get_addon_prefs().ts
         # Gpencil contexts : ('PAINT_GPENCIL', 'EDIT_GPENCIL')
         # if context.space_data.type != 'VIEW_3D':
         #     self.report({'WARNING'}, "Work only in Viewport")
@@ -143,6 +143,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.color_text = prefs.color_playhead
         self.use_hud_time_line = prefs.use_hud_time_line
         self.use_hud_keyframes = prefs.use_hud_keyframes
+        self.keyframe_aspect = prefs.keyframe_aspect
         self.use_hud_playhead = prefs.use_hud_playhead
         self.use_hud_frame_current = prefs.use_hud_frame_current
         self.use_hud_frame_offset = prefs.use_hud_frame_offset
@@ -209,7 +210,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # Disable Onion skin
         self.active_space_data = context.space_data
         self.onion_skin = None
-        if context.space_data.type == 'VIEW_3D': # and 'GPENCIL' in context.mode
+        if context.space_data.type == 'VIEW_3D':  # and 'GPENCIL' in context.mode
             self.onion_skin = self.active_space_data.overlay.use_gpencil_onion_skin
             self.active_space_data.overlay.use_gpencil_onion_skin = False
 
@@ -288,37 +289,54 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # rightmost = self.init_mouse_x + (right*self.px_step)
         # self.hud_lines += [(leftmost, my), (rightmost, my)]
 
-        # - # keyframe display
-        self.key_lines = []
-        # Slice off position of start/end frame added last (in list for snapping)
-        for i in self.pos[:-2]:
-            self.key_lines.append(
-                (self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
-            self.key_lines.append(
-                (self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
-
-        # diamond version
-        # keysize = 6 # 5 fpr square, 4 or 6 for diamond
-        # upper = 0
-        # self.key_diamonds = []
-        # for i in self.pos:
-        #     center = self.init_mouse_x + ((i-self.init_frame)*self.px_step)
-        #     self.key_diamonds.append((
-        #     (center-keysize, my+upper), (center, my+keysize+upper), # diamond
-        #     (center+keysize, my+upper), (center, my-keysize+upper) # diamond
-        #     # (center-keysize, my-keysize+upper), (center-keysize, my+keysize+upper), # square
-        #     # (center+keysize, my+keysize+upper), (center+keysize, my-keysize+upper) # square
-        #     ))
-        # self.indices = ((0, 1, 2), (0, 2, 3))
-
         # - # Prepare batchs to draw static parts
-
         shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
         self.batch_timeline = batch_for_shader(
             shader, 'LINES', {"pos": self.hud_lines})
 
-        self.batch_keyframes = batch_for_shader(
-            shader, 'LINES', {"pos": self.key_lines})
+        # - # keyframe display
+        if self.keyframe_aspect == 'LINE':
+            key_lines = []
+            # Slice off position of start/end frame added last (in list for snapping)
+            for i in self.pos[:-2]:
+                key_lines.append(
+                    (self.init_mouse_x + ((i-self.init_frame) * self.px_step), my - (key_height/2)))
+                key_lines.append(
+                    (self.init_mouse_x + ((i-self.init_frame)*self.px_step), my + (key_height/2)))
+
+            self.batch_keyframes = batch_for_shader(
+                shader, 'LINES', {"pos": key_lines})
+
+        else:
+            # diamond and square
+            # keysize = 6  # 5 for square, 4 or 6 for diamond
+            keysize = 6 if self.keyframe_aspect == 'DIAMOND' else 5
+            upper = 0
+
+            shaped_key = []
+            indices = []
+            idx_offset = 0
+            for i in self.pos[:-2]:
+                center = self.init_mouse_x + ((i-self.init_frame)*self.px_step)
+                if self.keyframe_aspect == 'DIAMOND':
+                    # +1 on x is to correct pixel alignement
+                    shaped_key += [(center-keysize, my+upper),
+                                   (center+1, my+keysize+upper),
+                                   (center+keysize, my+upper),
+                                   (center+1, my-keysize+upper)]
+
+                elif self.keyframe_aspect == 'SQUARE':
+                    shaped_key += [(center-keysize+1, my-keysize+upper),
+                                   (center-keysize+1, my+keysize+upper),
+                                   (center+keysize, my+keysize+upper),
+                                   (center+keysize, my-keysize+upper)]
+
+                indices += [(0+idx_offset, 1+idx_offset, 2+idx_offset),
+                            (0+idx_offset, 2+idx_offset, 3+idx_offset)]
+                idx_offset += 4
+
+            self.batch_keyframes = batch_for_shader(
+                shader, 'TRIS', {"pos": shaped_key}, indices=indices)
 
         args = (self, context)
         self.viewtype = None
@@ -428,7 +446,7 @@ class GPTS_OT_set_scrub_keymap(bpy.types.Operator):
     bl_options = {"REGISTER", "INTERNAL"}
 
     def invoke(self, context, event):
-        self.prefs = get_addon_prefs()
+        self.prefs = get_addon_prefs().ts
         self.ctrl = False
         self.shift = False
         self.alt = False
@@ -474,8 +492,7 @@ class GPTS_OT_set_scrub_keymap(bpy.types.Operator):
         return {"RUNNING_MODAL"}
 
 
-class GPTS_addon_prefs(bpy.types.AddonPreferences):
-    bl_idname = __name__
+class GPTS_timeline_settings(bpy.types.PropertyGroup):
 
     keycode: StringProperty(
         name="Shortcut",
@@ -524,7 +541,7 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         subtype='PIXEL')
 
     use_hud: BoolProperty(
-        name='Display HUD',
+        name='Display Timeline Overlay',
         description="Display overlays with timeline information when scrubbing time in viewport",
         default=True)
 
@@ -555,21 +572,19 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
 
     color_timeline: FloatVectorProperty(
         name="Timeline Color",
-        subtype='COLOR',
+        subtype='COLOR_GAMMA',
         size=4,
         default=(0.5, 0.5, 0.5, 0.6),
         min=0.0, max=1.0,
-        description="Color of the temporary timeline"
-    )
+        description="Color of the temporary timeline")
 
     color_playhead: FloatVectorProperty(
         name="Cusor Color",
-        subtype='COLOR',
+        subtype='COLOR_GAMMA',
         size=4,
         default=(0.01, 0.64, 1.0, 0.8),  # red (0.9, 0.3, 0.3, 0.8)
         min=0.0, max=1.0,
-        description="Color of the temporary line cursor and text"
-    )
+        description="Color of the temporary line cursor and text")
 
     # - # sizes
     playhead_size: IntProperty(
@@ -594,79 +609,108 @@ class GPTS_addon_prefs(bpy.types.AddonPreferences):
         step=1,
         subtype='PIXEL')
 
+    keyframe_aspect: EnumProperty(
+        name="Keyframe Display",
+        description="Customize aspect of the keyframes",
+        default='LINE',
+        items=(
+            ('LINE', 'Line',
+             'Keyframe displayed as thick lines', 'SNAP_INCREMENT', 0),
+            ('SQUARE', 'Square',
+             'Keyframe displayed as squares', 'HANDLETYPE_VECTOR_VEC', 1),
+            ('DIAMOND', 'Diamond',
+             'Keyframe displayed as diamonds', 'HANDLETYPE_FREE_VEC', 2),
+        ))
+
+
+class GPTS_addon_prefs(bpy.types.AddonPreferences):
+    bl_idname = __name__
+
+    ts: PointerProperty(type=GPTS_timeline_settings)
+
     def draw(self, context):
+        prefs = get_addon_prefs()
         layout = self.layout
         # layout.use_property_split = True
-
-        # - # General settings
-        layout.prop(self, 'evaluate_gp_obj_key')
-        # Make a keycode capture system or find a way to display keymap with full_event=True
-        layout.prop(self, 'pixel_step')
-
-        # -/ Keymap -
         box = layout.box()
-        box.label(text='Keymap:')
-        box.operator('animation.ts_set_keymap',
-                     text='Click here to change shortcut')
+        draw_ts_pref(prefs.ts, box)
 
-        if self.keycode:
-            row = box.row(align=True)
-            row.prop(self, 'use_ctrl', text='Ctrl')
-            row.prop(self, 'use_alt', text='Alt')
-            row.prop(self, 'use_shift', text='Shift')
-            # -/Cosmetic-
-            icon = None
-            if self.keycode == 'LEFTMOUSE':
-                icon = 'MOUSE_LMB'
-            elif self.keycode == 'MIDDLEMOUSE':
-                icon = 'MOUSE_MMB'
-            elif self.keycode == 'RIGHTMOUSE':
-                icon = 'MOUSE_RMB'
-            if icon:
-                row.label(text=f'{self.keycode}', icon=icon)
-            # -Cosmetic-/
-            else:
-                row.label(text=f'Key: {self.keycode}')
 
+def draw_ts_pref(prefs, layout):
+    # layout.use_property_split = True
+
+    # - # General settings
+    layout.prop(prefs, 'evaluate_gp_obj_key')
+    # Make a keycode capture system or find a way to display keymap with full_event=True
+    layout.prop(prefs, 'pixel_step')
+
+    # -/ Keymap -
+    box = layout.box()
+    box.label(text='Keymap:')
+    box.operator('animation.ts_set_keymap',
+                 text='Click here to change shortcut')
+
+    if prefs.keycode:
+        row = box.row(align=True)
+        row.prop(prefs, 'use_ctrl', text='Ctrl')
+        row.prop(prefs, 'use_alt', text='Alt')
+        row.prop(prefs, 'use_shift', text='Shift')
+        # -/Cosmetic-
+        icon = None
+        if prefs.keycode == 'LEFTMOUSE':
+            icon = 'MOUSE_LMB'
+        elif prefs.keycode == 'MIDDLEMOUSE':
+            icon = 'MOUSE_MMB'
+        elif prefs.keycode == 'RIGHTMOUSE':
+            icon = 'MOUSE_RMB'
+        if icon:
+            row.label(text=f'{prefs.keycode}', icon=icon)
+        # -Cosmetic-/
         else:
-            box.label(text='[ NOW TYPE KEY OR CLICK TO USE, WITH MODIFIER ]')
+            row.label(text=f'Key: {prefs.keycode}')
 
-        snap_text = 'Snap to keyframes: '
-        snap_text += 'Left Mouse' if self.keycode == 'RIGHTMOUSE' else 'Right Mouse'
-        if not self.use_ctrl:
-            snap_text += ' or Ctrl'
-        if not self.use_shift:
-            snap_text += ' or Shift'
-        if not self.use_alt:
-            snap_text += ' or Alt'
-        box.label(text=snap_text, icon='SNAP_ON')
-        if self.keycode in ('LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE') and not self.use_ctrl and not self.use_alt and not self.use_shift:
-            box.label(
-                text="Recommended to choose at least one modifier to combine with clicks (default: Ctrl+Alt)", icon="ERROR")
+    else:
+        box.label(text='[ NOW TYPE KEY OR CLICK TO USE, WITH MODIFIER ]')
 
-        box.prop(self, 'use_in_timeline_editor',
-                 text='Add same shortcut to scrub within timeline editors')
+    snap_text = 'Snap to keyframes: '
+    snap_text += 'Left Mouse' if prefs.keycode == 'RIGHTMOUSE' else 'Right Mouse'
+    if not prefs.use_ctrl:
+        snap_text += ' or Ctrl'
+    if not prefs.use_shift:
+        snap_text += ' or Shift'
+    if not prefs.use_alt:
+        snap_text += ' or Alt'
+    box.label(text=snap_text, icon='SNAP_ON')
+    if prefs.keycode in ('LEFTMOUSE', 'RIGHTMOUSE', 'MIDDLEMOUSE') and not prefs.use_ctrl and not prefs.use_alt and not prefs.use_shift:
+        box.label(
+            text="Recommended to choose at least one modifier to combine with clicks (default: Ctrl+Alt)", icon="ERROR")
 
-        # - # HUD/OSD
+    box.prop(prefs, 'use_in_timeline_editor',
+             text='Add same shortcut to scrub within timeline editors')
 
-        box = layout.box()
-        box.prop(self, 'use_hud')
+    # - # HUD/OSD
 
-        col = box.column()
-        row = col.row()
-        row.prop(self, 'color_timeline')
-        row.prop(self, 'color_playhead', text='Cursor And Text Color')
-        col.label(text='Show:')
-        row = col.row()
-        row.prop(self, 'use_hud_time_line')
-        row.prop(self, 'use_hud_playhead')
-        row = col.row()
-        row.prop(self, 'use_hud_frame_current')
-        row.prop(self, 'use_hud_frame_offset')
-        row = col.row()
-        row.prop(self, 'playhead_size')
-        row.prop(self, 'lines_size')
-        col.enabled = self.use_hud
+    box = layout.box()
+    box.prop(prefs, 'use_hud')
+
+    col = box.column()
+    row = col.row()
+    row.prop(prefs, 'color_timeline')
+    row.prop(prefs, 'color_playhead', text='Cursor And Text Color')
+    col.label(text='Show:')
+    row = col.row()
+    row.prop(prefs, 'use_hud_time_line')
+    row.prop(prefs, 'lines_size')
+    row = col.row()
+    row.prop(prefs, 'use_hud_playhead')
+    row.prop(prefs, 'playhead_size')
+    row = col.row()
+    row.prop(prefs, 'use_hud_keyframes')
+    row.prop(prefs, 'keyframe_aspect', text='')
+    row = col.row()
+    row.prop(prefs, 'use_hud_frame_current')
+    row.prop(prefs, 'use_hud_frame_offset')
+    col.enabled = prefs.use_hud
 
 
 def get_addon_prefs():
@@ -683,7 +727,7 @@ addon_keymaps = []
 
 
 def register_keymaps():
-    prefs = get_addon_prefs()
+    prefs = get_addon_prefs().ts
     addon = bpy.context.window_manager.keyconfigs.addon
     # km = addon.keymaps.new(name = "3D View", space_type = "VIEW_3D")
     km = addon.keymaps.new(name="Grease Pencil",
@@ -729,6 +773,7 @@ def unregister_keymaps():
 
 
 classes = (
+    GPTS_timeline_settings,
     GPTS_addon_prefs,
     GPTS_OT_time_scrub,
     GPTS_OT_set_scrub_keymap,

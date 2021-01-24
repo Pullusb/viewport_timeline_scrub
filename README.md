@@ -69,6 +69,15 @@ Done:
 ## Changelog:
 
 
+0.7.5
+
+- UI: added keyframe display option and reorganise
+- fix: Changed addon pref color to gamma corrected
+- code: refactor for easier merge with GP tools
+  - renamed props
+  - Separate addon prefs draw and properties
+
+
 0.7.4
 
 - fix: bug when HUD is disabled
