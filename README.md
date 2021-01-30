@@ -68,6 +68,9 @@ Done:
 
 ## Changelog:
 
+0.7.6
+
+- Now respect "limit to frame range" option if activated
 
 0.7.5
 

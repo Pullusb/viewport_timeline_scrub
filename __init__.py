@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 7, 5),
+    "version": (0, 7, 6),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
@@ -137,6 +137,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
         self.dpi = context.preferences.system.dpi
         self.ui_scale = context.preferences.system.ui_scale
+
         # hud prefs
         self.color_timeline = prefs.color_timeline
         self.color_playhead = prefs.color_playhead
@@ -157,8 +158,17 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.snap_on = False
         self.mouse = (event.mouse_region_x, event.mouse_region_y)
         self.init_mouse_x = self.cursor_x = event.mouse_region_x  # event.mouse_x
+        
         # self.init_mouse_y = event.mouse_region_y # only to display init frame text
         self.init_frame = self.new_frame = context.scene.frame_current
+        self.lock_range = context.scene.lock_frame_selection_to_range
+        if context.scene.use_preview_range:
+            self.f_start = context.scene.frame_preview_start
+            self.f_end = context.scene.frame_preview_end
+        else:
+            self.f_start = context.scene.frame_start
+            self.f_end = context.scene.frame_end
+
         self.offset = 0
         self.pos = []
 
@@ -196,16 +206,8 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
                         if frame.frame_number not in self.pos:
                             self.pos.append(frame.frame_number)
 
-        # - Add start and end to snap on
-        if context.scene.use_preview_range:
-            play_bounds = [context.scene.frame_preview_start,
-                           context.scene.frame_preview_end]
-        else:
-            play_bounds = [context.scene.frame_start, context.scene.frame_end]
-
         # Also snap on play bounds (sliced off for keyframe display)
-        self.pos += play_bounds
-        self.pos = np.asarray(self.pos)
+        self.pos += [self.f_start, self.f_end]
 
         # Disable Onion skin
         self.active_space_data = context.space_data
@@ -255,9 +257,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         # Add start/end boundary bracket to HUD
 
         start_x = self.init_mouse_x + \
-            (play_bounds[0] - self.init_frame) * self.px_step
+            (self.f_start - self.init_frame) * self.px_step
         end_x = self.init_mouse_x + \
-            (play_bounds[1] - self.init_frame) * self.px_step
+            (self.f_end - self.init_frame) * self.px_step
 
         # - # start
         up = (start_x, my - (bound_h/2))
@@ -338,6 +340,14 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
             self.batch_keyframes = batch_for_shader(
                 shader, 'TRIS', {"pos": shaped_key}, indices=indices)
 
+        # Trim snapping list of frame outside of frame range if range lock activated
+        # (after drawing batch so those are still showed)
+        if self.lock_range:
+            self.pos = [i for i in self.pos if self.f_start <= i <= self.f_end]
+        
+        # convert frame list to array for numpy snap utility
+        self.pos = np.asarray(self.pos)
+
         args = (self, context)
         self.viewtype = None
         self.spacetype = 'WINDOW'  # is PREVIEW for VSE, needed for handler remove
@@ -393,6 +403,13 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
 
             if self.snap_on or mod_snap:
                 self.new_frame = nearest(self.pos, self.new_frame)
+
+            # frame range restriction
+            if self.lock_range:
+                if self.new_frame < self.f_start:
+                    self.new_frame = self.f_start
+                elif self.new_frame > self.f_end:
+                    self.new_frame = self.f_end
 
             # context.scene.frame_set(self.new_frame)
             context.scene.frame_current = self.new_frame
