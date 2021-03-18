@@ -68,6 +68,13 @@ Done:
 
 ## Changelog:
 
+0.8.0
+
+- big update to match advance made in the GP Tools 1.4.0 built-in blender 2.93
+- Always snap mode
+- Rolling timeline
+- fixes
+
 0.7.6
 
 - Now respect "limit to frame range" option if activated
