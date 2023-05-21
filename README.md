@@ -2,7 +2,9 @@
 
 Move in the timeline directly in viewport and snap to nearest keyframe
 
-## Note : This standalone is in native add-on _Grease Pencil Tools_ (Starting 2.93)
+## Note : This standalone feature is integrated in native add-on _Grease Pencil Tools_ (Shipped with Blender since 2.93)  
+## It is recommended to use Grease pencil tools as it is generally more up to date.
+
 
 **[Download latest](https://github.com/Pullusb/viewport_timeline_scrub/archive/main.zip)**
 

@@ -18,7 +18,7 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 8, 0),
+    "version": (0, 8, 1),
     "blender": (2, 91, 0),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
@@ -357,7 +357,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.pos = np.asarray(self.pos)
 
         if self.rolling_mode:
-            context.scene.frame_current = self.new_frame
+            context.scene.frame_current =int(self.new_frame)
 
         args = (self, context)
         self.viewtype = None
@@ -408,7 +408,7 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
                 # clamp to possible index range
                 self.index = min(max(self.index, 0), self.index_limit)
                 self.new_frame = self.pos[self.index]
-                context.scene.frame_current = self.new_frame
+                context.scene.frame_current = int(self.new_frame)
                 self.cursor_x = self.init_mouse_x + (self.offset * self.px_step)
 
             else:
@@ -437,17 +437,17 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
                         self.new_frame = self.f_end
 
                 # context.scene.frame_set(self.new_frame)
-                context.scene.frame_current = self.new_frame
+                context.scene.frame_current = int(self.new_frame)
 
                 # - recalculate offset to snap cursor to frame
-                self.offset = self.new_frame - self.init_frame
+                self.offset = int(self.new_frame - self.init_frame)
 
                 # - calculate cursor pixel position from frame offset
                 self.cursor_x = self.init_mouse_x + (self.offset * self.px_step)
 
         if event.type == 'ESC':
             # frame_set(self.init_frame) ?
-            context.scene.frame_current = self.cancel_frame
+            context.scene.frame_current = int(self.cancel_frame)
             self._exit_modal(context)
             return {'CANCELLED'}
 
