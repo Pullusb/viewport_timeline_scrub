@@ -18,8 +18,10 @@ bl_info = {
     "name": "Viewport Scrub Timeline",
     "description": "Scrub on timeline from viewport and snap to nearest keyframe",
     "author": "Samuel Bernou",
-    "version": (0, 8, 1),
-    "blender": (2, 91, 0),
+    # "version": (0, 8, 1),
+    "version": (0, 9, 0),                       #   UPDATED 23-1-2024
+    # "blender": (2, 91, 0),
+    "blender": (4, 0, 2),
     "location": "View3D > shortcut key chosen in addon prefs",
     "warning": "",
     "doc_url": "https://github.com/Pullusb/viewport_timeline_scrub",
@@ -44,9 +46,14 @@ def draw_callback_px(self, context):
     # text
     font_id = 0
 
-    shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
-    bgl.glEnable(bgl.GL_BLEND)
-    bgl.glLineWidth(1)
+    shader = gpu.shader.from_builtin('UNIFORM_COLOR')  # initiate shader        #   > 4.0 
+    # shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader   #   < 4.0
+
+    # bgl.glEnable(bgl.GL_BLEND)                                                #   < 4.0
+    gpu.state.blend_set("ALPHA")                                                #   > 4.0    
+
+    # bgl.glLineWidth(1)                                                        #   < 4.0
+    gpu.state.line_width_set(1)                                                 #   > 4.0 
 
     # Draw HUD
     if self.use_hud_time_line:
@@ -57,18 +64,18 @@ def draw_callback_px(self, context):
     # Display keyframes
     if self.use_hud_keyframes:
         if self.keyframe_aspect == 'LINE':
-            bgl.glLineWidth(3)
+            gpu.state.line_width_set(3)
             shader.bind()
             shader.uniform_float("color", self.color_timeline)
             self.batch_keyframes.draw(shader)
         else:
-            bgl.glLineWidth(1)
+            gpu.state.line_width_set(1)
             shader.bind()
             shader.uniform_float("color", self.color_timeline)
             self.batch_keyframes.draw(shader)
 
     # Show current frame line
-    bgl.glLineWidth(1)
+    gpu.state.line_width_set(1)
     if self.use_hud_playhead:
         playhead = [(self.cursor_x, self.my + self.playhead_size/2),
                     (self.cursor_x, self.my - self.playhead_size/2)]
@@ -78,20 +85,28 @@ def draw_callback_px(self, context):
         batch.draw(shader)
 
     # restore opengl defaults
-    bgl.glDisable(bgl.GL_BLEND)
+        
+    # bgl.glDisable(bgl.GL_BLEND)                                                   #   < 4.0
+    gpu.state.blend_set("NONE")                                                     #   > 4.0 
 
     # Display current frame text
     blf.color(font_id, *self.color_text)
     if self.use_hud_frame_current:
         blf.position(font_id, self.mouse[0]+10, self.mouse[1]+10, 0)
-        blf.size(font_id, 30, self.dpi)
+
+        # blf.size(font_id, 30, self.dpi)                                           #   < 4.0
+        blf.size(font_id, 30)                                                       #   > 4.0 
+
         blf.draw(font_id, f'{self.new_frame:.0f}')
 
     # Display frame offset text
     if self.use_hud_frame_offset:
         blf.position(font_id, self.mouse[0]+10,
                      self.mouse[1]+(40*self.ui_scale), 0)
-        blf.size(font_id, 16, self.dpi)
+        
+        # blf.size(font_id, 16, self.dpi)                                           #   < 4.0
+        blf.size(font_id, 16)                                                       #   > 4.0 
+
         sign = '+' if self.offset > 0 else ''
         blf.draw(font_id, f'{sign}{self.offset:.0f}')
 
@@ -292,7 +307,9 @@ class GPTS_OT_time_scrub(bpy.types.Operator):
         self.hud_lines += [(0, my), (width, my)]
 
         # Prepare batchs to draw static parts
-        shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader
+        # shader = gpu.shader.from_builtin('2D_UNIFORM_COLOR')  # initiate shader               #   < 4.0
+        shader = gpu.shader.from_builtin('UNIFORM_COLOR')  # initiate shader                    #   > 4.0 
+
         self.batch_timeline = batch_for_shader(
             shader, 'LINES', {"pos": self.hud_lines})
         
